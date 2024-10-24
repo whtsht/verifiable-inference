@@ -1,0 +1,14 @@
+[package]
+name = "verifiable-inference"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+curve25519-dalek = { version = "4.1.3", features = ["rand_core"] }
+merlin = "3.0.0"
+rand = "0.8.5"
+spartan = { version = "0.8.0", default-features = false, features = ["std", "profile"] }
+
+[[bin]]
+name = "veinf"
+path = "src/main.rs"
