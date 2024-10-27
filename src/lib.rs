@@ -1,5 +1,6 @@
 pub mod compiler;
 pub mod model;
+pub mod r1cs;
 
 // Client, Worker, TrustedParty
 //
