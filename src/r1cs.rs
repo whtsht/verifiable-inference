@@ -1,7 +1,7 @@
 use curve25519_dalek::Scalar;
 use libspartan::Instance;
 
-use crate::compiler::{Circuit, CircuitValue};
+use crate::circuit::{Circuit, CircuitValue};
 
 pub struct R1CS {
     pub num_consts: usize,
