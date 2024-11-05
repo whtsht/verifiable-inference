@@ -28,6 +28,13 @@ impl Compiler {
             variables_counter: 0,
         }
     }
+
+    pub fn new_with_counters(inputs_counter: Id, variables_counter: Id) -> Self {
+        Compiler {
+            inputs_counter,
+            variables_counter,
+        }
+    }
 }
 
 impl Compiler {
@@ -128,6 +135,138 @@ impl Compiler {
 
         circuits
     }
+}
+
+pub fn remove_output(exprs: &[Expression]) -> Vec<Expression> {
+    exprs
+        .iter()
+        .filter(|expr| match expr {
+            Expression::Eq(var, input) => !matches!(
+                (var.as_ref(), input.as_ref()),
+                (&Expression::Variable(_), &Expression::Input(_))
+            ),
+            _ => true,
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn replace_var_expr(expr: Expression, from: Id, to: Id) -> Expression {
+    match expr {
+        Expression::Variable(id) if id == from => Expression::Variable(to),
+        Expression::Eq(lhs, rhs) => Expression::Eq(
+            Box::new(replace_var_expr(*lhs, from, to)),
+            Box::new(replace_var_expr(*rhs, from, to)),
+        ),
+        Expression::Sum(exprs) => Expression::Sum(
+            exprs
+                .into_iter()
+                .map(|expr| replace_var_expr(expr, from, to))
+                .collect(),
+        ),
+        Expression::Product(exprs) => Expression::Product(
+            exprs
+                .into_iter()
+                .map(|expr| replace_var_expr(expr, from, to))
+                .collect(),
+        ),
+        expr => expr,
+    }
+}
+
+pub fn replace_var(exprs: Vec<Expression>, from: Id, to: Id) -> Vec<Expression> {
+    exprs
+        .into_iter()
+        .map(|expr| replace_var_expr(expr, from, to))
+        .collect()
+}
+
+pub fn replace_input2var(expr: Expression, target: Id) -> Expression {
+    match expr {
+        Expression::Input(id) if id == target => Expression::Variable(target),
+        Expression::Eq(lhs, rhs) => Expression::Eq(
+            Box::new(replace_input2var(*lhs, target)),
+            Box::new(replace_input2var(*rhs, target)),
+        ),
+        Expression::Sum(exprs) => Expression::Sum(
+            exprs
+                .into_iter()
+                .map(|expr| replace_input2var(expr, target))
+                .collect(),
+        ),
+        Expression::Product(exprs) => Expression::Product(
+            exprs
+                .into_iter()
+                .map(|expr| replace_input2var(expr, target))
+                .collect(),
+        ),
+        expr => expr,
+    }
+}
+
+pub fn replace_input2var_all(exprs: Vec<Expression>, target: Id) -> Vec<Expression> {
+    exprs
+        .into_iter()
+        .map(|expr| replace_input2var(expr, target))
+        .collect()
+}
+
+pub fn find_max_id(exprs: &[Expression]) -> Id {
+    exprs
+        .iter()
+        .flat_map(|expr| match expr {
+            Expression::Variable(id) => vec![*id],
+            Expression::Eq(a, b) => {
+                let mut ids = vec![];
+                if let Expression::Variable(id) = **a {
+                    ids.push(id);
+                }
+                if let Expression::Variable(id) = **b {
+                    ids.push(id);
+                }
+                ids
+            }
+            Expression::Sum(exprs) | Expression::Product(exprs) => vec![find_max_id(exprs)],
+            Expression::Input(_) | Expression::Constant(_) => vec![],
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+pub fn find_max_input_id(exprs: &[Expression]) -> Id {
+    exprs
+        .iter()
+        .flat_map(|expr| match expr {
+            Expression::Input(id) => vec![*id],
+            Expression::Eq(a, b) => {
+                let mut ids = vec![];
+                if let Expression::Input(id) = **a {
+                    ids.push(id);
+                }
+                if let Expression::Input(id) = **b {
+                    ids.push(id);
+                }
+                ids
+            }
+            Expression::Sum(exprs) | Expression::Product(exprs) => vec![find_max_input_id(exprs)],
+            Expression::Variable(_) | Expression::Constant(_) => vec![],
+        })
+        .max()
+        .unwrap_or(0)
+}
+pub fn concat_exprs(exprs1: Vec<Expression>, mut exprs2: Vec<Expression>) -> Vec<Expression> {
+    if exprs1.is_empty() {
+        return exprs2;
+    }
+    let max_id = find_max_id(&exprs1);
+    let exprs1 = remove_output(&exprs1);
+    for (old_id, new_id) in (0..=max_id).zip(max_id + 1..) {
+        exprs2 = replace_var(exprs2, old_id, new_id);
+    }
+    for target in 0..=max_id {
+        exprs2 = replace_input2var_all(exprs2, target);
+    }
+    exprs1.into_iter().chain(exprs2).collect()
 }
 
 #[cfg(test)]
@@ -339,6 +478,134 @@ mod tests {
                 cadd(12, cvar(10), cvar(11)),
                 cadd(13, cvar(12), ccons(3)),
                 ceq(0, cvar(13)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_remove_output() {
+        let model = Linear {
+            input: 2,
+            output: 2,
+            weight: vec![1, 2, 3, 4],
+            bias: vec![5, 6],
+        };
+        let mut compiler = Compiler::new();
+
+        let exprs = compiler.linear_to_expression(model);
+        assert_eq!(
+            remove_output(&exprs),
+            vec![
+                eq(
+                    var(0),
+                    sum(&[
+                        prod(&[input(0), cons(1)]),
+                        prod(&[input(1), cons(2)]),
+                        cons(5)
+                    ])
+                ),
+                eq(
+                    var(1),
+                    sum(&[
+                        prod(&[input(0), cons(3)]),
+                        prod(&[input(1), cons(4)]),
+                        cons(6)
+                    ])
+                ),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_replace_var() {
+        let expr = eq(var(0), sum(&[var(1), var(2)]));
+        assert_eq!(
+            replace_var(vec![expr.clone()], 0, 3),
+            vec![eq(var(3), sum(&[var(1), var(2)]),)]
+        );
+        assert_eq!(
+            replace_var(vec![expr.clone()], 1, 3),
+            vec![eq(var(0), sum(&[var(3), var(2)]),)]
+        );
+        assert_eq!(
+            replace_var(vec![expr.clone()], 2, 3),
+            vec![eq(var(0), sum(&[var(1), var(3)]),)]
+        );
+    }
+
+    #[test]
+    fn test_multi_layer() {
+        let layer1 = Linear {
+            input: 1,
+            output: 1,
+            weight: vec![1],
+            bias: vec![1],
+        };
+        let layer2 = Linear {
+            input: 1,
+            output: 1,
+            weight: vec![1],
+            bias: vec![1],
+        };
+
+        let mut compiler = Compiler::new();
+        let exprs1 = compiler.linear_to_expression(layer1);
+        let mut compiler = Compiler::new();
+        let exprs2 = compiler.linear_to_expression(layer2);
+        assert_eq!(
+            concat_exprs(exprs1, exprs2),
+            vec![
+                eq(var(0), sum(&[prod(&[input(0), cons(1)]), cons(1)])),
+                eq(var(1), sum(&[prod(&[var(0), cons(1)]), cons(1)])),
+                eq(var(1), input(1))
+            ],
+        );
+
+        let layer1 = Linear {
+            input: 2,
+            output: 2,
+            weight: vec![1, 2, 3, 4],
+            bias: vec![5, 6],
+        };
+        let layer2 = Linear {
+            input: 2,
+            output: 2,
+            weight: vec![1, 2, 3, 4],
+            bias: vec![5, 6],
+        };
+        let mut compiler = Compiler::new();
+        let exprs1 = compiler.linear_to_expression(layer1);
+        let mut compiler = Compiler::new();
+        let exprs2 = compiler.linear_to_expression(layer2);
+        assert_eq!(
+            concat_exprs(exprs1, exprs2),
+            vec![
+                eq(
+                    var(0),
+                    sum(&[
+                        prod(&[input(0), cons(1)]),
+                        prod(&[input(1), cons(2)]),
+                        cons(5)
+                    ])
+                ),
+                eq(
+                    var(1),
+                    sum(&[
+                        prod(&[input(0), cons(3)]),
+                        prod(&[input(1), cons(4)]),
+                        cons(6)
+                    ])
+                ),
+                eq(
+                    var(2),
+                    sum(&[prod(&[var(0), cons(1)]), prod(&[var(1), cons(2)]), cons(5)])
+                ),
+                eq(var(2), input(2)),
+                eq(
+                    var(3),
+                    sum(&[prod(&[var(0), cons(3)]), prod(&[var(1), cons(4)]), cons(6)])
+                ),
+                eq(var(3), input(3))
             ]
         );
     }

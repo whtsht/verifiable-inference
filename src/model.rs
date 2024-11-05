@@ -1,4 +1,7 @@
-use crate::{circuit::Circuit, compiler::Compiler};
+use crate::{
+    circuit::Circuit,
+    compiler::{concat_exprs, find_max_id, find_max_input_id, Compiler},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Linear {
@@ -10,19 +13,26 @@ pub struct Linear {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Model {
-    linear: Linear,
+    layers: Vec<Linear>,
 }
 
 impl Model {
-    pub fn new(linear: Linear) -> Self {
-        Self { linear }
+    pub fn new(linear: Vec<Linear>) -> Self {
+        Self { layers: linear }
     }
 }
 
 impl Model {
     pub fn circuits(&self) -> Vec<Circuit> {
-        let mut compiler = Compiler::new();
-        let exprs = compiler.linear_to_expression(self.linear.clone());
+        let mut exprs = vec![];
+        for layer in self.layers.iter() {
+            let mut compiler = Compiler::new();
+            let new_exprs = compiler.linear_to_expression(layer.clone());
+            exprs = concat_exprs(exprs, new_exprs);
+        }
+        let max_var_id = find_max_id(&exprs);
+        let max_input_id = find_max_input_id(&exprs);
+        let mut compiler = Compiler::new_with_counters(max_input_id, max_var_id + 1);
         exprs
             .into_iter()
             .flat_map(|expr| compiler.flatten(expr))
@@ -30,15 +40,17 @@ impl Model {
     }
 
     pub fn compute(&self, input: &[u32]) -> Vec<u32> {
-        let mut output = vec![0u32; self.linear.output];
-
-        for i in 0..self.linear.output {
-            output[i] = self.linear.bias[i];
-            (0..self.linear.input).for_each(|j| {
-                output[i] += self.linear.weight[i * self.linear.input + j] * input[j];
+        let mut output = input.to_vec();
+        for layer in self.layers.iter() {
+            let mut new_output = vec![0u32; layer.output];
+            (0..layer.output).for_each(|i| {
+                new_output[i] = layer.bias[i];
+                (0..layer.input).for_each(|j| {
+                    new_output[i] += layer.weight[i * layer.input + j] * output[j];
+                });
             });
+            output = new_output;
         }
-
         output
     }
 }
@@ -76,12 +88,12 @@ mod tests {
     #[test]
     fn test_circits() {
         let model = Model {
-            linear: Linear {
+            layers: vec![Linear {
                 input: 2,
                 output: 1,
                 weight: vec![1, 2],
                 bias: vec![3],
-            },
+            }],
         };
         // to expressions
         // v0 = i0 * 1 + i1 * 2 + 3
@@ -111,6 +123,62 @@ mod tests {
                 cadd(4, cvar(3), ccons(3)),
                 ceq(0, cvar(4)),
                 ceq(0, cinput(2)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_layer() {
+        let model = Model::new(vec![
+            Linear {
+                input: 1,
+                output: 1,
+                weight: vec![1],
+                bias: vec![1],
+            },
+            Linear {
+                input: 1,
+                output: 1,
+                weight: vec![1],
+                bias: vec![1],
+            },
+        ]);
+        let circuits = model.circuits();
+        // [Eq(Variable(0), Sum([Product([Input(0), Constant(1)]), Constant(1)]))
+        //  Eq(Variable(1), Sum([Product([Variable(0), Constant(1)]), Constant(1)]))
+        //  Eq(Variable(1), Input(1))]
+
+        // [
+        // Eq(Variable(0), Sum([Product([Input(0), Constant(1)]), Constant(1)]))
+        // Eq(Variable(1), Sum([Product([Input(0), Constant(1)]), Constant(1)]))
+        // Eq(Variable(1), Input(1))
+        // ]
+        // v0 = i0 * 1 + 1
+        // v1 = i0 * 1 + 1
+        // v1 = i1
+
+        // [
+        // Mult(2, Input(0), Constant(1)),
+        // Add(3, Variable(2), Constant(1)),
+        // Eq(0, Variable(3)),
+        // Mult(4, Variable(0), Constant(1)),
+        // Add(5, Variable(4), Constant(1)),
+        // Eq(1, Variable(5)),
+        // Eq(1, Input(1))]
+        //
+        // Mult(2, Input(0), Constant(1)),
+        // Add(3, Variable(2), Constant(1)),
+        // Mult(4, Variable(3), Constant(1)),
+        // Add(5, Variable(4),Constant(1)),
+        // Eq(1, Variable(5))]
+        assert_eq!(
+            circuits,
+            vec![
+                cmult(2, cinput(0), ccons(1)),
+                cadd(3, cvar(2), ccons(1)),
+                cmult(4, cvar(3), ccons(1)),
+                cadd(5, cvar(4), ccons(1)),
+                ceq(1, cvar(5)),
             ]
         );
     }

@@ -4,19 +4,26 @@ use verifiable_inference::{
 };
 
 fn main() {
-    let model = Model::new(Linear {
-        input: 2,
-        output: 1,
-        weight: vec![1, 2],
-        bias: vec![3],
-    });
+    let model = Model::new(vec![
+        Linear {
+            input: 2,
+            output: 2,
+            weight: vec![1, 1, 1, 1],
+            bias: vec![1, 1],
+        },
+        Linear {
+            input: 2,
+            output: 2,
+            weight: vec![1, 1, 1, 1],
+            bias: vec![1, 1],
+        },
+    ]);
     let trusted_party = TrustedParty::setup(model);
     let worker = trusted_party.assigment_worker();
     let client = trusted_party.create_client();
 
-    let input = vec![5, 6];
+    let input = vec![1, 1];
     let output = client.delegate_computation(input, &worker);
 
-    // expected output: 5 * 1 + 6 * 2 + 3 = 20
-    println!("Output: {:?}", output);
+    assert_eq!(output, Some(vec![7, 7]));
 }

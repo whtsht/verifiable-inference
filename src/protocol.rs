@@ -148,11 +148,12 @@ impl Client {
                 .collect::<Vec<_>>(),
         )
         .unwrap();
-
-        if let Ok(()) = proof.verify(&self.commitment, &inputs, &mut transcript, &self.gens) {
-            Some(output)
-        } else {
-            None
+        match proof.verify(&self.commitment, &inputs, &mut transcript, &self.gens) {
+            Ok(()) => Some(output),
+            Err(err) => {
+                println!("Error: {:?}", err);
+                None
+            }
         }
     }
 }
