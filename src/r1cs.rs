@@ -10,7 +10,7 @@ pub struct R1CS {
     pub instance: Instance,
 }
 
-pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> R1CS {
+pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> (R1CS, usize) {
     let mut a: Vec<(usize, usize, [u8; 32])> = Vec::new();
     let mut b: Vec<(usize, usize, [u8; 32])> = Vec::new();
     let mut c: Vec<(usize, usize, [u8; 32])> = Vec::new();
@@ -91,12 +91,17 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
 
     let instance = Instance::new(num_consts, num_vars, num_inputs, &a, &b, &c).unwrap();
 
-    R1CS {
-        num_consts,
-        num_vars,
-        num_inputs,
-        instance,
-    }
+    let num_non_zero_entries = a.len().max(b.len()).max(c.len());
+
+    (
+        R1CS {
+            num_consts,
+            num_vars,
+            num_inputs,
+            instance,
+        },
+        num_non_zero_entries,
+    )
 }
 
 #[cfg(test)]

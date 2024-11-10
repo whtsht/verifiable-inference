@@ -51,9 +51,8 @@ impl TrustedParty {
         let num_cons = circuits.len();
         let num_vars = circuit::num_vars(&circuits);
         let num_inputs = circuit::num_inputs(&circuits);
-        let num_non_zero_entries = num_vars;
 
-        let r1cs = into_r1cs(circuits.clone(), num_inputs, num_vars);
+        let (r1cs, num_non_zero_entries) = into_r1cs(circuits.clone(), num_inputs, num_vars);
         let gens = SNARKGens::new(num_cons, num_vars, num_inputs, num_non_zero_entries);
 
         let (comm, decomm) = SNARK::encode(&r1cs.instance, &gens);
