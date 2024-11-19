@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn test_eq_r1cs() {
         let circuits = vec![Circuit::Eq(0, CircuitValue::Constant(1234))];
-        let r1cs = into_r1cs(circuits, 0, 1);
+        let (r1cs, _) = into_r1cs(circuits, 0, 1);
         assert_eq!(r1cs.num_consts, 1);
         assert_eq!(r1cs.num_vars, 1);
         assert_eq!(r1cs.num_inputs, 0);
@@ -134,7 +134,7 @@ mod tests {
             CircuitValue::Constant(30),
             CircuitValue::Input(0),
         )];
-        let r1cs = into_r1cs(circuits, 1, 1);
+        let (r1cs, _) = into_r1cs(circuits, 1, 1);
         assert_eq!(r1cs.num_consts, 1);
 
         // v0 = 30 + 20 = 50
@@ -155,7 +155,7 @@ mod tests {
             CircuitValue::Constant(30),
             CircuitValue::Input(0),
         )];
-        let r1cs = into_r1cs(circuits, 1, 1);
+        let (r1cs, _) = into_r1cs(circuits, 1, 1);
         assert_eq!(r1cs.num_consts, 1);
 
         // v0 = 30 * 20 = 600
@@ -177,7 +177,7 @@ mod tests {
             Circuit::Add(1, CircuitValue::Variable(0), CircuitValue::Input(1)),
         ];
 
-        let r1cs = into_r1cs(circuits, 2, 2);
+        let (r1cs, _) = into_r1cs(circuits, 2, 2);
         assert_eq!(r1cs.num_consts, 2);
 
         // v0 = 30 * 5 = 150

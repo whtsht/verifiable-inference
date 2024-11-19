@@ -7,8 +7,8 @@ use crate::{
 pub struct Linear {
     pub input: usize,
     pub output: usize,
-    pub weight: Vec<u32>,
-    pub bias: Vec<u32>,
+    pub weight: Vec<Vec<i32>>,
+    pub bias: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,14 +39,14 @@ impl Model {
             .collect()
     }
 
-    pub fn compute(&self, input: &[u32]) -> Vec<u32> {
+    pub fn compute(&self, input: &[i32]) -> Vec<i32> {
         let mut output = input.to_vec();
         for layer in self.layers.iter() {
-            let mut new_output = vec![0u32; layer.output];
+            let mut new_output = vec![0; layer.output];
             (0..layer.output).for_each(|i| {
                 new_output[i] = layer.bias[i];
                 (0..layer.input).for_each(|j| {
-                    new_output[i] += layer.weight[i * layer.input + j] * output[j];
+                    new_output[i] += layer.weight[i][j] * output[j];
                 });
             });
             output = new_output;
@@ -91,7 +91,7 @@ mod tests {
             layers: vec![Linear {
                 input: 2,
                 output: 1,
-                weight: vec![1, 2],
+                weight: vec![vec![1, 2]],
                 bias: vec![3],
             }],
         };
@@ -133,13 +133,13 @@ mod tests {
             Linear {
                 input: 1,
                 output: 1,
-                weight: vec![1],
+                weight: vec![vec![1]],
                 bias: vec![1],
             },
             Linear {
                 input: 1,
                 output: 1,
-                weight: vec![1],
+                weight: vec![vec![1]],
                 bias: vec![1],
             },
         ]);
@@ -166,6 +166,8 @@ mod tests {
         // Eq(1, Variable(5)),
         // Eq(1, Input(1))]
         //
+        // <= EQ =>
+        //
         // Mult(2, Input(0), Constant(1)),
         // Add(3, Variable(2), Constant(1)),
         // Mult(4, Variable(3), Constant(1)),
@@ -176,9 +178,11 @@ mod tests {
             vec![
                 cmult(2, cinput(0), ccons(1)),
                 cadd(3, cvar(2), ccons(1)),
-                cmult(4, cvar(3), ccons(1)),
+                ceq(0, cvar(3)),
+                cmult(4, cvar(0), ccons(1)),
                 cadd(5, cvar(4), ccons(1)),
                 ceq(1, cvar(5)),
+                ceq(1, cinput(1))
             ]
         );
     }

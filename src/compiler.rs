@@ -45,10 +45,12 @@ impl Compiler {
             for j in 0..model.input {
                 sum.push(Expression::Product(vec![
                     Expression::Input(j + self.inputs_counter),
-                    Expression::Constant(model.weight[i * model.input + j]),
+                    // TODO: 正しい変換を実装する
+                    Expression::Constant(model.weight[i][j] as u32),
                 ]));
             }
-            sum.push(Expression::Constant(model.bias[i]));
+            // TODO: 正しい変換を実装する
+            sum.push(Expression::Constant(model.bias[i] as u32));
 
             let output = Box::new(Expression::Variable(i + self.variables_counter));
             expressions.push(Expression::Eq(
@@ -302,7 +304,7 @@ mod tests {
         let model = Linear {
             input: 2,
             output: 1,
-            weight: vec![1, 2],
+            weight: vec![vec![1, 2]],
             bias: vec![3],
         };
         let mut compiler = Compiler::new();
@@ -329,7 +331,7 @@ mod tests {
         let model = Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 2, 3, 4],
+            weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
         let mut compiler = Compiler::new();
@@ -364,7 +366,12 @@ mod tests {
         let model = Linear {
             input: 4,
             output: 4,
-            weight: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            weight: vec![
+                vec![1, 2, 3, 4],
+                vec![5, 6, 7, 8],
+                vec![9, 10, 11, 12],
+                vec![13, 14, 15, 16],
+            ],
             bias: vec![17, 18, 19, 20],
         };
         let mut compiler = Compiler::new();
@@ -487,7 +494,7 @@ mod tests {
         let model = Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 2, 3, 4],
+            weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
         let mut compiler = Compiler::new();
@@ -538,13 +545,13 @@ mod tests {
         let layer1 = Linear {
             input: 1,
             output: 1,
-            weight: vec![1],
+            weight: vec![vec![1]],
             bias: vec![1],
         };
         let layer2 = Linear {
             input: 1,
             output: 1,
-            weight: vec![1],
+            weight: vec![vec![1]],
             bias: vec![1],
         };
 
@@ -564,13 +571,13 @@ mod tests {
         let layer1 = Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 2, 3, 4],
+            weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
         let layer2 = Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 2, 3, 4],
+            weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
         let mut compiler = Compiler::new();

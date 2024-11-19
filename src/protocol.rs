@@ -95,16 +95,21 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn run(&self, input: Vec<u32>) -> (Vec<u32>, SNARK) {
+    pub fn run(&self, input: Vec<i32>) -> (Vec<i32>, SNARK) {
         let output = self.model.compute(&input);
         let inputs = [input.clone(), output.clone()].concat();
+        // TODO: 正しい変換を実装する
+        let inputs = inputs.into_iter().map(|x| x as u32).collect::<Vec<_>>();
         let vars = crate::circuit::get_variables(&self.circuits, inputs);
         let mut transcript = Transcript::new(b"SNARK");
         // R1CS input = Circuit.input + Circuit.output
+        // TODO: 正しい変換を実装する
+        let input_ = input.iter().map(|&x| x as u32).collect::<Vec<_>>();
+        let output_ = output.iter().map(|&x| x as u32).collect::<Vec<_>>();
         let inputs = Assignment::new(
-            &input
+            &input_
                 .into_iter()
-                .chain(output.clone())
+                .chain(output_.clone())
                 .map(|x| Scalar::from(x).to_bytes())
                 .collect::<Vec<_>>(),
         )
@@ -136,13 +141,16 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn delegate_computation(&self, input: Vec<u32>, worker: &Worker) -> Option<Vec<u32>> {
+    pub fn delegate_computation(&self, input: Vec<i32>, worker: &Worker) -> Option<Vec<i32>> {
         let (output, proof) = worker.run(input.clone());
         let mut transcript = Transcript::new(b"SNARK");
+
+        let input_ = input.iter().map(|&x| x as u32).collect::<Vec<_>>();
+        let output_ = output.iter().map(|&x| x as u32).collect::<Vec<_>>();
         let inputs = Assignment::new(
-            &input
+            &input_
                 .into_iter()
-                .chain(output.clone())
+                .chain(output_.clone())
                 .map(|x| Scalar::from(x).to_bytes())
                 .collect::<Vec<_>>(),
         )

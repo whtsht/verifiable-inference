@@ -8,13 +8,13 @@ fn main() {
         Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 1, 1, 1],
+            weight: vec![vec![1, 1], vec![1, 1]],
             bias: vec![1, 1],
         },
         Linear {
             input: 2,
             output: 2,
-            weight: vec![1, 1, 1, 1],
+            weight: vec![vec![1, 1], vec![1, 1]],
             bias: vec![1, 1],
         },
     ]);
