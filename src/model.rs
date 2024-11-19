@@ -11,6 +11,15 @@ pub struct Linear {
     pub bias: Vec<i32>,
 }
 
+pub struct Conv {
+    pub input_size: usize,
+    pub stride: usize,
+    // weight: [out_channel][in_channel][kernel_size][kernel_size]
+    pub weight: Vec<Vec<Vec<Vec<i32>>>>,
+    // bias: [out_channel]
+    pub bias: Vec<i32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Model {
     layers: Vec<Linear>,
@@ -27,7 +36,7 @@ impl Model {
         let mut exprs = vec![];
         for layer in self.layers.iter() {
             let mut compiler = Compiler::new();
-            let new_exprs = compiler.linear_to_expression(layer.clone());
+            let new_exprs = compiler.linear_to_exprs(layer.clone());
             exprs = concat_exprs(exprs, new_exprs);
         }
         let max_var_id = find_max_id(&exprs);
