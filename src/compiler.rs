@@ -8,7 +8,7 @@ pub type Id = usize;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Variable(Id),
-    Constant(u32),
+    Constant(i32),
     Input(Id),
     Eq(Box<Expression>, Box<Expression>),
     Sum(Vec<Expression>),
@@ -46,11 +46,11 @@ impl Compiler {
                 sum.push(Expression::Product(vec![
                     Expression::Input(j + self.inputs_counter),
                     // TODO: 正しい変換を実装する
-                    Expression::Constant(model.weight[i][j] as u32),
+                    Expression::Constant(model.weight[i][j]),
                 ]));
             }
             // TODO: 正しい変換を実装する
-            sum.push(Expression::Constant(model.bias[i] as u32));
+            sum.push(Expression::Constant(model.bias[i]));
 
             let output = Box::new(Expression::Variable(i + self.variables_counter));
             expressions.push(Expression::Eq(
@@ -275,7 +275,7 @@ pub fn concat_exprs(exprs1: Vec<Expression>, mut exprs2: Vec<Expression>) -> Vec
 mod tests {
     use super::*;
 
-    fn cons(value: u32) -> Expression {
+    fn cons(value: i32) -> Expression {
         Expression::Constant(value)
     }
 
@@ -455,7 +455,7 @@ mod tests {
         CircuitValue::Input(id)
     }
 
-    fn ccons(value: u32) -> CircuitValue {
+    fn ccons(value: i32) -> CircuitValue {
         CircuitValue::Constant(value)
     }
 

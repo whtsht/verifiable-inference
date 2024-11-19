@@ -14,11 +14,11 @@ pub enum Circuit {
 pub enum CircuitValue {
     Variable(Id),
     Input(Id),
-    Constant(u32),
+    Constant(i32),
 }
 
-pub fn get_variables(circuits: &[Circuit], input: Vec<u32>) -> Vec<u32> {
-    let mut vars = vec![0u32; num_vars(circuits)];
+pub fn get_variables(circuits: &[Circuit], input: Vec<i32>) -> Vec<i32> {
+    let mut vars = vec![0i32; num_vars(circuits)];
 
     for circuit in circuits {
         match *circuit {
@@ -42,7 +42,7 @@ pub fn get_variables(circuits: &[Circuit], input: Vec<u32>) -> Vec<u32> {
     vars
 }
 
-fn evaluate_value(value: &CircuitValue, vars: &[u32], input: &[u32]) -> u32 {
+fn evaluate_value(value: &CircuitValue, vars: &[i32], input: &[i32]) -> i32 {
     match *value {
         CircuitValue::Variable(id) => vars[id],
         CircuitValue::Input(id) => input[id],
@@ -153,7 +153,7 @@ mod tests {
         CircuitValue::Input(id)
     }
 
-    fn ccons(value: u32) -> CircuitValue {
+    fn ccons(value: i32) -> CircuitValue {
         CircuitValue::Constant(value)
     }
 

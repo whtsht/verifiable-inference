@@ -81,7 +81,7 @@ mod tests {
         CircuitValue::Input(id)
     }
 
-    fn ccons(value: u32) -> CircuitValue {
+    fn ccons(value: i32) -> CircuitValue {
         CircuitValue::Constant(value)
     }
 

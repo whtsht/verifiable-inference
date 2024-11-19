@@ -26,7 +26,6 @@
 ///     Commitment, Gens, Input, Output, Proof -> Verify
 use std::rc::Rc;
 
-use curve25519_dalek::Scalar;
 use libspartan::{Assignment, ComputationCommitment, ComputationDecommitment, SNARKGens, SNARK};
 use merlin::Transcript;
 
@@ -34,6 +33,7 @@ use crate::{
     circuit::{self, Circuit},
     model::Model,
     r1cs::{into_r1cs, R1CS},
+    scalar::from_i32,
 };
 
 pub struct TrustedParty {
@@ -98,26 +98,21 @@ impl Worker {
     pub fn run(&self, input: Vec<i32>) -> (Vec<i32>, SNARK) {
         let output = self.model.compute(&input);
         let inputs = [input.clone(), output.clone()].concat();
-        // TODO: 正しい変換を実装する
-        let inputs = inputs.into_iter().map(|x| x as u32).collect::<Vec<_>>();
         let vars = crate::circuit::get_variables(&self.circuits, inputs);
         let mut transcript = Transcript::new(b"SNARK");
         // R1CS input = Circuit.input + Circuit.output
-        // TODO: 正しい変換を実装する
-        let input_ = input.iter().map(|&x| x as u32).collect::<Vec<_>>();
-        let output_ = output.iter().map(|&x| x as u32).collect::<Vec<_>>();
         let inputs = Assignment::new(
-            &input_
+            &input
                 .into_iter()
-                .chain(output_.clone())
-                .map(|x| Scalar::from(x).to_bytes())
+                .chain(output.clone())
+                .map(|x| from_i32(x).to_bytes())
                 .collect::<Vec<_>>(),
         )
         .unwrap();
         let vars = Assignment::new(
             &vars
                 .into_iter()
-                .map(|x| Scalar::from(x).to_bytes())
+                .map(|x| from_i32(x).to_bytes())
                 .collect::<Vec<_>>(),
         )
         .unwrap();
@@ -144,14 +139,11 @@ impl Client {
     pub fn delegate_computation(&self, input: Vec<i32>, worker: &Worker) -> Option<Vec<i32>> {
         let (output, proof) = worker.run(input.clone());
         let mut transcript = Transcript::new(b"SNARK");
-
-        let input_ = input.iter().map(|&x| x as u32).collect::<Vec<_>>();
-        let output_ = output.iter().map(|&x| x as u32).collect::<Vec<_>>();
         let inputs = Assignment::new(
-            &input_
+            &input
                 .into_iter()
-                .chain(output_.clone())
-                .map(|x| Scalar::from(x).to_bytes())
+                .chain(output.clone())
+                .map(|x| from_i32(x).to_bytes())
                 .collect::<Vec<_>>(),
         )
         .unwrap();
@@ -162,5 +154,37 @@ impl Client {
                 None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Linear;
+
+    #[test]
+    fn test_protorol() {
+        let model = Model::new(vec![
+            Linear {
+                input: 2,
+                output: 2,
+                weight: vec![vec![1, 1], vec![1, 1]],
+                bias: vec![1, 1],
+            },
+            Linear {
+                input: 2,
+                output: 2,
+                weight: vec![vec![1, 1], vec![1, 1]],
+                bias: vec![1, -9],
+            },
+        ]);
+        let trusted_party = TrustedParty::setup(model);
+        let worker = trusted_party.assigment_worker();
+        let client = trusted_party.create_client();
+
+        let input = vec![1, 1];
+        let output = client.delegate_computation(input, &worker);
+
+        assert_eq!(output, Some(vec![7, -3]));
     }
 }

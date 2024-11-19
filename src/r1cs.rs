@@ -1,7 +1,10 @@
 use curve25519_dalek::Scalar;
 use libspartan::Instance;
 
-use crate::circuit::{Circuit, CircuitValue};
+use crate::{
+    circuit::{Circuit, CircuitValue},
+    scalar::from_i32,
+};
 
 pub struct R1CS {
     pub num_consts: usize,
@@ -23,7 +26,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Eq(y, x) => {
                 match x {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, Scalar::from(con).to_bytes()));
+                        a.push((i, num_vars, from_i32(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -38,7 +41,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Mult(y, x1, x2) => {
                 match x1 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, Scalar::from(con).to_bytes()));
+                        a.push((i, num_vars, from_i32(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -49,7 +52,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
                 }
                 match x2 {
                     CircuitValue::Constant(con) => {
-                        b.push((i, num_vars, Scalar::from(con).to_bytes()));
+                        b.push((i, num_vars, from_i32(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         b.push((i, var, one));
@@ -63,7 +66,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Add(y, x1, x2) => {
                 match x1 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, Scalar::from(con).to_bytes()));
+                        a.push((i, num_vars, from_i32(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -74,7 +77,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
                 }
                 match x2 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, Scalar::from(con).to_bytes()));
+                        a.push((i, num_vars, from_i32(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
