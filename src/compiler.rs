@@ -1,215 +1,257 @@
 use crate::{
     circuit::{Circuit, CircuitValue},
-    model::{Conv, Linear},
+    model::{Conv, Dense},
 };
+use rayon::prelude::*;
 
 pub type Id = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Variable(Id),
-    Constant(i32),
+    Constant(i64),
     Input(Id),
     Eq(Box<Expression>, Box<Expression>),
     Sum(Vec<Expression>),
     Product(Vec<Expression>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Compiler {
-    inputs_counter: Id,
-    variables_counter: Id,
-}
+pub fn get_variables(exprs: &[Expression], input: Vec<i64>) -> Vec<i64> {
+    let mut vars = vec![0i64; get_max_id(exprs) + 1];
 
-impl Compiler {
-    pub fn new() -> Self {
-        Compiler {
-            inputs_counter: 0,
-            variables_counter: 0,
-        }
-    }
-
-    pub fn new_with_counters(inputs_counter: Id, variables_counter: Id) -> Self {
-        Compiler {
-            inputs_counter,
-            variables_counter,
-        }
-    }
-}
-
-impl Compiler {
-    pub fn linear_to_exprs(&mut self, model: Linear) -> Vec<Expression> {
-        let mut exprs = vec![];
-        for i in 0..model.output {
-            let mut sum = vec![];
-            for j in 0..model.input {
-                sum.push(Expression::Product(vec![
-                    Expression::Input(j + self.inputs_counter),
-                    Expression::Constant(model.weight[i][j]),
-                ]));
+    for expr in exprs {
+        if let Expression::Eq(a, b) = expr {
+            if let &Expression::Variable(id) = a.as_ref() {
+                vars[id] = evaluate_expr(*b.clone(), &input, &vars);
             }
-            sum.push(Expression::Constant(model.bias[i]));
-
-            let output = Box::new(Expression::Variable(i + self.variables_counter));
-            exprs.push(Expression::Eq(
-                output.clone(),
-                Box::new(Expression::Sum(sum)),
-            ));
-            exprs.push(Expression::Eq(
-                output.clone(),
-                Box::new(Expression::Input(model.input + i + self.inputs_counter)),
-            ));
         }
-
-        self.inputs_counter += model.input;
-        self.variables_counter += model.output;
-        exprs
     }
 
-    pub fn conv_to_exprs(&mut self, model: Conv) -> Vec<Expression> {
-        let mut exprs = vec![];
+    vars
+}
 
-        let mut var_counter = 0;
-        for (out_channel, bias) in model.weight.into_iter().zip(model.bias) {
-            for kernel in out_channel.iter() {
-                let kernel_size = kernel.len();
-                for i in (0..=((model.input_size - kernel_size) / model.stride))
-                    .map(|x| x * model.stride)
-                {
-                    for j in (0..=((model.input_size - kernel_size) / model.stride))
-                        .map(|x| x * model.stride)
-                    {
-                        let expr = self.kernel_to_expr(
-                            kernel.clone(),
-                            self.gen_conv_input(
-                                i * model.input_size + j,
-                                kernel_size,
-                                model.input_size,
-                            ),
-                            bias,
-                            var_counter,
-                        );
-                        exprs.push(expr);
-                        var_counter += 1;
-                    }
+fn get_max_id(exprs: &[Expression]) -> Id {
+    exprs
+        .par_iter()
+        .flat_map(|expr| match expr {
+            Expression::Variable(id) => vec![*id],
+            Expression::Eq(a, b) => {
+                let mut ids = vec![];
+                if let Expression::Variable(id) = **a {
+                    ids.push(id);
                 }
+                if let Expression::Variable(id) = **b {
+                    ids.push(id);
+                }
+                ids
             }
-        }
+            Expression::Sum(exprs) | Expression::Product(exprs) => vec![get_max_id(exprs)],
+            Expression::Input(_) | Expression::Constant(_) => vec![],
+        })
+        .max()
+        .unwrap_or(0)
+}
 
-        for j in 0..var_counter {
-            exprs.push(Expression::Eq(
-                Box::new(Expression::Variable(j)),
-                Box::new(Expression::Input(model.input_size.pow(2) + j)),
-            ));
-        }
+fn evaluate_expr(expr: Expression, input: &[i64], vars: &[i64]) -> i64 {
+    match expr {
+        Expression::Constant(val) => val,
+        Expression::Variable(id) => vars[id],
+        Expression::Input(id) => input[id],
+        Expression::Sum(exprs) => exprs
+            .into_iter()
+            .map(|expr| evaluate_expr(expr, input, vars))
+            .sum(),
+        Expression::Product(exprs) => exprs
+            .into_iter()
+            .map(|expr| evaluate_expr(expr, input, vars))
+            .product(),
+        Expression::Eq(_, _) => unreachable!(),
+    }
+}
 
-        exprs
+pub fn linear_to_exprs(model: Dense) -> Vec<Expression> {
+    let output_len = model.weight.len();
+    let input_len = model.weight[0].len();
+
+    let mut exprs = vec![];
+    for i in 0..output_len {
+        let mut sum = vec![];
+        for j in 0..input_len {
+            sum.push(Expression::Product(vec![
+                Expression::Input(j),
+                Expression::Constant(model.weight[i][j]),
+            ]));
+        }
+        sum.push(Expression::Constant(model.bias[i]));
+
+        let output = Box::new(Expression::Variable(i));
+        exprs.push(Expression::Eq(
+            output.clone(),
+            Box::new(Expression::Sum(sum)),
+        ));
+        exprs.push(Expression::Eq(
+            output.clone(),
+            Box::new(Expression::Input(input_len + i)),
+        ));
     }
 
-    fn gen_conv_input(&self, start: usize, kernel_size: usize, img_size: usize) -> Vec<Vec<usize>> {
-        (0..kernel_size)
-            .map(|i| (0..kernel_size).map(|j| start + i * img_size + j).collect())
-            .collect()
-    }
+    exprs
+}
 
-    fn kernel_to_expr(
-        &mut self,
-        kernel: Vec<Vec<i32>>,
-        inputs: Vec<Vec<usize>>,
-        bias: i32,
-        var: usize,
-    ) -> Expression {
-        let mut exprs = vec![];
-        for (k_row, i_row) in kernel.into_iter().zip(inputs.into_iter()) {
-            for (k, i) in k_row.into_iter().zip(i_row.into_iter()) {
-                exprs.push(Expression::Product(vec![
-                    Expression::Input(i),
-                    Expression::Constant(k),
-                ]));
-            }
-        }
-        exprs.push(Expression::Constant(bias));
+pub fn conv_to_exprs(model: Conv) -> Vec<Expression> {
+    let mut exprs = vec![];
 
-        Expression::Eq(
-            Box::new(Expression::Variable(var)),
-            Box::new(Expression::Sum(exprs)),
-        )
-    }
+    let mut var_counter = 0;
+    let input_channel_size = model.weight[0].len();
+    let kernel_size = model.weight[0][0].len();
+    let input_size = model.input_size;
 
-    pub fn flatten(&mut self, expression: Expression) -> Vec<Circuit> {
-        let mut circuits = vec![];
+    for (out_channel, bias) in model.weight.into_iter().zip(model.bias) {
+        let output_size = (input_size - kernel_size) / model.stride + 1;
+        let mut input_kernel_exprs: Vec<Vec<Vec<Expression>>> =
+            vec![vec![vec![]; output_size]; output_size];
 
-        fn flatten_expr(
-            compiler: &mut Compiler,
-            expr: Expression,
-            circuits: &mut Vec<Circuit>,
-        ) -> CircuitValue {
-            match expr {
-                Expression::Constant(val) => CircuitValue::Constant(val),
-                Expression::Variable(id) => CircuitValue::Variable(id),
-                Expression::Input(id) => CircuitValue::Input(id),
+        for (input_idx, kernel) in out_channel.iter().enumerate() {
+            for i in (0..output_size).map(|x| x * model.stride) {
+                for j in (0..output_size).map(|x| x * model.stride) {
+                    let inputs = gen_conv_input(
+                        input_idx * input_size * input_size + i * input_size + j,
+                        kernel_size,
+                        input_size,
+                    );
 
-                Expression::Eq(lhs, rhs) => {
-                    let lhs_val = flatten_expr(compiler, *lhs, circuits);
-                    let rhs_val = flatten_expr(compiler, *rhs, circuits);
-                    let lhs_var = match lhs_val {
-                        CircuitValue::Variable(id) => id,
-                        _ => {
-                            let tmp_var = compiler.variables_counter;
-                            compiler.variables_counter += 1;
-                            circuits.push(Circuit::Eq(tmp_var, lhs_val));
-                            tmp_var
+                    let mut tmp_exprs = vec![];
+                    for (k_row, i_row) in kernel.clone().into_iter().zip(inputs.into_iter()) {
+                        for (k, i) in k_row.into_iter().zip(i_row.into_iter()) {
+                            tmp_exprs.push(Expression::Product(vec![
+                                Expression::Input(i),
+                                Expression::Constant(k),
+                            ]));
                         }
-                    };
-                    circuits.push(Circuit::Eq(lhs_var, rhs_val));
-                    lhs_val
-                }
-
-                Expression::Sum(exprs) => {
-                    let mut sum_var = None;
-                    for expr in exprs {
-                        let val = flatten_expr(compiler, expr, circuits);
-                        sum_var = match sum_var {
-                            Some(current_sum) => {
-                                let tmp_var = compiler.variables_counter;
-                                compiler.variables_counter += 1;
-                                circuits.push(Circuit::Add(tmp_var, current_sum, val));
-                                Some(CircuitValue::Variable(tmp_var))
-                            }
-                            None => Some(val),
-                        };
                     }
-                    sum_var.unwrap()
-                }
 
-                Expression::Product(exprs) => {
-                    let mut prod_var = None;
-                    for expr in exprs {
-                        let val = flatten_expr(compiler, expr, circuits);
-                        prod_var = match prod_var {
-                            Some(current_prod) => {
-                                let tmp_var = compiler.variables_counter;
-                                compiler.variables_counter += 1;
-                                circuits.push(Circuit::Mult(tmp_var, current_prod, val));
-                                Some(CircuitValue::Variable(tmp_var))
-                            }
-                            None => Some(val),
-                        };
-                    }
-                    prod_var.unwrap()
+                    input_kernel_exprs[i / model.stride][j / model.stride].extend(tmp_exprs);
                 }
             }
         }
 
-        flatten_expr(self, expression, &mut circuits);
+        for kernel_exprs_row in input_kernel_exprs {
+            for mut kernel_exprs in kernel_exprs_row {
+                kernel_exprs.push(Expression::Constant(bias));
 
-        circuits
+                let expr = Expression::Eq(
+                    Box::new(Expression::Variable(var_counter)),
+                    Box::new(Expression::Sum(kernel_exprs)),
+                );
+
+                exprs.push(expr);
+                var_counter += 1;
+            }
+        }
     }
+
+    for j in 0..var_counter {
+        exprs.push(Expression::Eq(
+            Box::new(Expression::Variable(j)),
+            Box::new(Expression::Input(
+                input_size.pow(2) * input_channel_size + j,
+            )),
+        ));
+    }
+
+    exprs
+}
+
+fn gen_conv_input(start: usize, kernel_size: usize, img_size: usize) -> Vec<Vec<usize>> {
+    (0..kernel_size)
+        .map(|i| (0..kernel_size).map(|j| start + i * img_size + j).collect())
+        .collect()
+}
+
+pub fn flatten(expression: Expression, variables_counter: Id) -> (Id, Vec<Circuit>) {
+    fn flatten_expr(
+        mut variables_counter: Id,
+        expr: Expression,
+    ) -> (CircuitValue, Id, Vec<Circuit>) {
+        match expr {
+            Expression::Constant(val) => (CircuitValue::Constant(val), variables_counter, vec![]),
+            Expression::Variable(id) => (CircuitValue::Variable(id), variables_counter, vec![]),
+            Expression::Input(id) => (CircuitValue::Input(id), variables_counter, vec![]),
+            Expression::Eq(lhs, rhs) => {
+                let (lhs_val, lhs_counter, lhs_circuits) = flatten_expr(variables_counter, *lhs);
+                let (rhs_val, rhs_counter, rhs_circuits) = flatten_expr(lhs_counter, *rhs);
+                variables_counter = rhs_counter;
+
+                let mut circuits = lhs_circuits;
+                circuits.extend(rhs_circuits);
+
+                let lhs_var = match lhs_val {
+                    CircuitValue::Variable(id) => id,
+                    _ => {
+                        let tmp_var = variables_counter;
+                        variables_counter += 1;
+                        circuits.push(Circuit::Eq(tmp_var, lhs_val));
+                        tmp_var
+                    }
+                };
+
+                circuits.push(Circuit::Eq(lhs_var, rhs_val));
+                (lhs_val, variables_counter, circuits)
+            }
+
+            Expression::Sum(exprs) => {
+                let mut sum_var = None;
+                let mut circuits = vec![];
+
+                for expr in exprs {
+                    let (val, next_counter, new_circuits) = flatten_expr(variables_counter, expr);
+                    variables_counter = next_counter;
+                    circuits.extend(new_circuits);
+
+                    sum_var = match sum_var {
+                        Some(current_sum) => {
+                            let tmp_var = variables_counter;
+                            variables_counter += 1;
+                            circuits.push(Circuit::Add(tmp_var, current_sum, val));
+                            Some(CircuitValue::Variable(tmp_var))
+                        }
+                        None => Some(val),
+                    };
+                }
+                (sum_var.unwrap(), variables_counter, circuits)
+            }
+
+            Expression::Product(exprs) => {
+                let mut prod_var = None;
+                let mut circuits = vec![];
+
+                for expr in exprs {
+                    let (val, next_counter, new_circuits) = flatten_expr(variables_counter, expr);
+                    variables_counter = next_counter;
+                    circuits.extend(new_circuits);
+
+                    prod_var = match prod_var {
+                        Some(current_prod) => {
+                            let tmp_var = variables_counter;
+                            variables_counter += 1;
+                            circuits.push(Circuit::Mult(tmp_var, current_prod, val));
+                            Some(CircuitValue::Variable(tmp_var))
+                        }
+                        None => Some(val),
+                    };
+                }
+                (prod_var.unwrap(), variables_counter, circuits)
+            }
+        }
+    }
+
+    let (_, id, circuits) = flatten_expr(variables_counter, expression);
+    (id, circuits)
 }
 
 pub fn remove_output(exprs: &[Expression]) -> Vec<Expression> {
     exprs
-        .iter()
+        .par_iter()
         .filter(|expr| match expr {
             Expression::Eq(var, input) => !matches!(
                 (var.as_ref(), input.as_ref()),
@@ -244,46 +286,69 @@ pub fn replace_var_expr(expr: Expression, from: Id, to: Id) -> Expression {
     }
 }
 
-pub fn replace_var(exprs: Vec<Expression>, from: Id, to: Id) -> Vec<Expression> {
-    exprs
-        .into_iter()
-        .map(|expr| replace_var_expr(expr, from, to))
-        .collect()
-}
-
-pub fn replace_input2var(expr: Expression, target: Id) -> Expression {
+pub fn replace_input_expr(expr: Expression, from: Id, to: Id) -> Expression {
     match expr {
-        Expression::Input(id) if id == target => Expression::Variable(target),
+        Expression::Input(id) if id == from => Expression::Input(to),
         Expression::Eq(lhs, rhs) => Expression::Eq(
-            Box::new(replace_input2var(*lhs, target)),
-            Box::new(replace_input2var(*rhs, target)),
+            Box::new(replace_input_expr(*lhs, from, to)),
+            Box::new(replace_input_expr(*rhs, from, to)),
         ),
         Expression::Sum(exprs) => Expression::Sum(
             exprs
                 .into_iter()
-                .map(|expr| replace_input2var(expr, target))
+                .map(|expr| replace_input_expr(expr, from, to))
                 .collect(),
         ),
         Expression::Product(exprs) => Expression::Product(
             exprs
                 .into_iter()
-                .map(|expr| replace_input2var(expr, target))
+                .map(|expr| replace_input_expr(expr, from, to))
                 .collect(),
         ),
         expr => expr,
     }
 }
 
-pub fn replace_input2var_all(exprs: Vec<Expression>, target: Id) -> Vec<Expression> {
+pub fn replace_var(exprs: &Vec<Expression>, from: Id, to: Id) -> Vec<Expression> {
     exprs
-        .into_iter()
-        .map(|expr| replace_input2var(expr, target))
+        .par_iter()
+        .map(|expr| replace_var_expr(expr.clone(), from, to))
         .collect()
 }
 
-pub fn find_max_id(exprs: &[Expression]) -> Id {
+pub fn replace_input(exprs: &Vec<Expression>, from: Id, to: Id) -> Vec<Expression> {
     exprs
-        .iter()
+        .par_iter()
+        .map(|expr| replace_input_expr(expr.clone(), from, to))
+        .collect()
+}
+
+pub fn replace_input2var(expr: Expression, from: Id, to: Id) -> Expression {
+    match expr {
+        Expression::Input(id) if id == from => Expression::Variable(to),
+        Expression::Eq(lhs, rhs) => Expression::Eq(
+            Box::new(replace_input2var(*lhs, from, to)),
+            Box::new(replace_input2var(*rhs, from, to)),
+        ),
+        Expression::Sum(exprs) => Expression::Sum(
+            exprs
+                .into_iter()
+                .map(|expr| replace_input2var(expr, from, to))
+                .collect(),
+        ),
+        Expression::Product(exprs) => Expression::Product(
+            exprs
+                .into_iter()
+                .map(|expr| replace_input2var(expr, from, to))
+                .collect(),
+        ),
+        expr => expr,
+    }
+}
+
+pub fn find_max_var_id(exprs: &[Expression]) -> Id {
+    exprs
+        .par_iter()
         .flat_map(|expr| match expr {
             Expression::Variable(id) => vec![*id],
             Expression::Eq(a, b) => {
@@ -296,7 +361,7 @@ pub fn find_max_id(exprs: &[Expression]) -> Id {
                 }
                 ids
             }
-            Expression::Sum(exprs) | Expression::Product(exprs) => vec![find_max_id(exprs)],
+            Expression::Sum(exprs) | Expression::Product(exprs) => vec![find_max_var_id(exprs)],
             Expression::Input(_) | Expression::Constant(_) => vec![],
         })
         .max()
@@ -305,7 +370,7 @@ pub fn find_max_id(exprs: &[Expression]) -> Id {
 
 pub fn find_max_input_id(exprs: &[Expression]) -> Id {
     exprs
-        .iter()
+        .par_iter()
         .flat_map(|expr| match expr {
             Expression::Input(id) => vec![*id],
             Expression::Eq(a, b) => {
@@ -324,26 +389,110 @@ pub fn find_max_input_id(exprs: &[Expression]) -> Id {
         .max()
         .unwrap_or(0)
 }
-pub fn concat_exprs(exprs1: Vec<Expression>, mut exprs2: Vec<Expression>) -> Vec<Expression> {
-    if exprs1.is_empty() {
-        return exprs2;
+
+pub fn concat_exprs(conv1: Vec<Expression>, mut conv2: Vec<Expression>) -> Vec<Expression> {
+    if conv1.is_empty() {
+        return conv2;
     }
-    let max_id = find_max_id(&exprs1);
-    let exprs1 = remove_output(&exprs1);
+
+    let mut inputs1 = vec![];
+    for expr in &conv1 {
+        if let Expression::Eq(var, input) = expr {
+            if let (&Expression::Variable(_), &Expression::Input(id)) =
+                (var.as_ref(), input.as_ref())
+            {
+                inputs1.push(id);
+            }
+        }
+    }
+
+    let mut inputs2 = vec![];
+    for expr in &conv2 {
+        if let Expression::Eq(var, input) = expr {
+            if let (&Expression::Variable(_), &Expression::Input(id)) =
+                (var.as_ref(), input.as_ref())
+            {
+                inputs2.push(id);
+            }
+        }
+    }
+
+    let max_id = find_max_var_id(&conv1);
+    let exprs1 = remove_output(&conv1);
     for (old_id, new_id) in (0..=max_id).zip(max_id + 1..) {
-        exprs2 = replace_var(exprs2, old_id, new_id);
+        conv2 = replace_var(&conv2, old_id, new_id);
     }
-    for target in 0..=max_id {
-        exprs2 = replace_input2var_all(exprs2, target);
+
+    for (from, to) in ((max_id - inputs1.len() + 1)..=max_id).enumerate() {
+        conv2 = conv2
+            .into_iter()
+            .map(|expr| replace_input2var(expr, from, to))
+            .collect();
     }
-    exprs1.into_iter().chain(exprs2).collect()
+
+    // 入力サイズが異なる場合の調整
+    for (input2, input1) in inputs2.into_iter().zip(inputs1) {
+        conv2 = replace_input(&conv2, input2, input1);
+    }
+
+    exprs1.into_iter().chain(conv2).collect()
+}
+
+pub fn multiple_layer(exprs1: Vec<Expression>, exprs2: Vec<Expression>) -> Vec<Expression> {
+    let mut inputs1 = vec![];
+    for expr in &exprs1 {
+        if let Expression::Eq(var, input) = expr {
+            if let (&Expression::Variable(_), &Expression::Input(_)) =
+                (var.as_ref(), input.as_ref())
+            {
+                inputs1.push(input.clone());
+            }
+        }
+    }
+    let mut inputs2 = vec![];
+    for expr in &exprs1 {
+        if let Expression::Eq(var, input) = expr {
+            if let (&Expression::Variable(_), &Expression::Input(_)) =
+                (var.as_ref(), input.as_ref())
+            {
+                inputs2.push(input.clone());
+            }
+        }
+    }
+    assert_eq!(inputs1, inputs2);
+
+    let max_id = find_max_var_id(&exprs1);
+    let mut exprs = remove_output(&exprs1);
+    let mut exprs2 = remove_output(&exprs2);
+    for (old_id, new_id) in (0..=max_id).zip(max_id + 1..) {
+        exprs2 = replace_var(&exprs2, old_id, new_id);
+    }
+    exprs.extend(exprs2);
+    for i in 0..inputs1.len() {
+        exprs.push(Expression::Eq(
+            Box::new(Expression::Variable(i + (max_id + 1) * 2)),
+            Box::new(Expression::Product(vec![
+                Expression::Variable(i),
+                Expression::Variable(i + max_id + 1),
+            ])),
+        ));
+    }
+
+    for (i, input) in inputs1.into_iter().enumerate() {
+        exprs.push(Expression::Eq(
+            Box::new(Expression::Variable(i + (max_id + 1) * 2)),
+            input,
+        ));
+    }
+
+    exprs
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn cons(value: i32) -> Expression {
+    fn cons(value: i64) -> Expression {
         Expression::Constant(value)
     }
 
@@ -369,15 +518,12 @@ mod tests {
 
     #[test]
     fn test_linear_to_expression() {
-        let model = Linear {
-            input: 2,
-            output: 1,
+        let model = Dense {
             weight: vec![vec![1, 2]],
             bias: vec![3],
         };
-        let mut compiler = Compiler::new();
         assert_eq!(
-            compiler.linear_to_exprs(model),
+            linear_to_exprs(model),
             // input: i0, i1, output: i2
             // v0 = i0 * 1 + i1 * 2 + 3
             // v0 = i2
@@ -393,18 +539,13 @@ mod tests {
                 eq(var(0), input(2))
             ],
         );
-        assert_eq!(compiler.inputs_counter, 2);
-        assert_eq!(compiler.variables_counter, 1);
 
-        let model = Linear {
-            input: 2,
-            output: 2,
+        let model = Dense {
             weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
-        let mut compiler = Compiler::new();
         assert_eq!(
-            compiler.linear_to_exprs(model),
+            linear_to_exprs(model),
             vec![
                 // v0 = i0 * 1 + i1 * 2 + 5
                 // v0 = i2
@@ -431,9 +572,7 @@ mod tests {
             ],
         );
 
-        let model = Linear {
-            input: 4,
-            output: 4,
+        let model = Dense {
             weight: vec![
                 vec![1, 2, 3, 4],
                 vec![5, 6, 7, 8],
@@ -442,10 +581,9 @@ mod tests {
             ],
             bias: vec![17, 18, 19, 20],
         };
-        let mut compiler = Compiler::new();
 
         assert_eq!(
-            compiler.linear_to_exprs(model),
+            linear_to_exprs(model),
             vec![
                 // v0 = i0 * 1 + i1 * 2 + i2 * 3 + i3 * 4 + 17
                 // v0 = i4
@@ -523,14 +661,12 @@ mod tests {
         CircuitValue::Input(id)
     }
 
-    fn ccons(value: i32) -> CircuitValue {
+    fn ccons(value: i64) -> CircuitValue {
         CircuitValue::Constant(value)
     }
 
     #[test]
     fn test_flatten() {
-        let mut compiler = Compiler::new();
-        compiler.variables_counter = 10;
         // v0 = i0 * 1 + i1 * 2 + 3
         let expr = eq(
             var(0),
@@ -540,8 +676,9 @@ mod tests {
                 cons(3),
             ]),
         );
+        let var_counter = 10;
         assert_eq!(
-            compiler.flatten(expr),
+            flatten(expr, var_counter).1,
             // v10 = i0 * 1
             // v11 = i1 * 2
             // v12 = v10 + v11
@@ -559,15 +696,12 @@ mod tests {
 
     #[test]
     fn test_remove_output() {
-        let model = Linear {
-            input: 2,
-            output: 2,
+        let model = Dense {
             weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
-        let mut compiler = Compiler::new();
 
-        let exprs = compiler.linear_to_exprs(model);
+        let exprs = linear_to_exprs(model);
         assert_eq!(
             remove_output(&exprs),
             vec![
@@ -595,38 +729,32 @@ mod tests {
     fn test_replace_var() {
         let expr = eq(var(0), sum(&[var(1), var(2)]));
         assert_eq!(
-            replace_var(vec![expr.clone()], 0, 3),
+            replace_var(&vec![expr.clone()], 0, 3),
             vec![eq(var(3), sum(&[var(1), var(2)]),)]
         );
         assert_eq!(
-            replace_var(vec![expr.clone()], 1, 3),
+            replace_var(&vec![expr.clone()], 1, 3),
             vec![eq(var(0), sum(&[var(3), var(2)]),)]
         );
         assert_eq!(
-            replace_var(vec![expr.clone()], 2, 3),
+            replace_var(&vec![expr.clone()], 2, 3),
             vec![eq(var(0), sum(&[var(1), var(3)]),)]
         );
     }
 
     #[test]
     fn test_multi_layer() {
-        let layer1 = Linear {
-            input: 1,
-            output: 1,
+        let layer1 = Dense {
             weight: vec![vec![1]],
             bias: vec![1],
         };
-        let layer2 = Linear {
-            input: 1,
-            output: 1,
+        let layer2 = Dense {
             weight: vec![vec![1]],
             bias: vec![1],
         };
 
-        let mut compiler = Compiler::new();
-        let exprs1 = compiler.linear_to_exprs(layer1);
-        let mut compiler = Compiler::new();
-        let exprs2 = compiler.linear_to_exprs(layer2);
+        let exprs1 = linear_to_exprs(layer1);
+        let exprs2 = linear_to_exprs(layer2);
         assert_eq!(
             concat_exprs(exprs1, exprs2),
             vec![
@@ -636,22 +764,16 @@ mod tests {
             ],
         );
 
-        let layer1 = Linear {
-            input: 2,
-            output: 2,
+        let layer1 = Dense {
             weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
-        let layer2 = Linear {
-            input: 2,
-            output: 2,
+        let layer2 = Dense {
             weight: vec![vec![1, 2], vec![3, 4]],
             bias: vec![5, 6],
         };
-        let mut compiler = Compiler::new();
-        let exprs1 = compiler.linear_to_exprs(layer1);
-        let mut compiler = Compiler::new();
-        let exprs2 = compiler.linear_to_exprs(layer2);
+        let exprs1 = linear_to_exprs(layer1);
+        let exprs2 = linear_to_exprs(layer2);
         assert_eq!(
             concat_exprs(exprs1, exprs2),
             vec![
@@ -683,27 +805,56 @@ mod tests {
                 eq(var(3), input(3))
             ]
         );
+
+        let conv1 = Conv {
+            input_size: 1,
+            stride: 1,
+            weight: vec![vec![vec![vec![1]]]],
+            bias: vec![1],
+        };
+        let conv2 = Conv {
+            input_size: 1,
+            stride: 1,
+            weight: vec![vec![vec![vec![1]]]],
+            bias: vec![1],
+        };
+
+        let exprs1 = conv_to_exprs(conv1);
+        assert_eq!(
+            exprs1,
+            vec![
+                eq(var(0), sum(&[prod(&[input(0), cons(1)]), cons(1)])),
+                eq(var(0), input(1)),
+            ]
+        );
+        let exprs2 = conv_to_exprs(conv2);
+        assert_eq!(
+            exprs2,
+            vec![
+                eq(var(0), sum(&[prod(&[input(0), cons(1)]), cons(1)])),
+                eq(var(0), input(1)),
+            ]
+        );
+
+        let exprs = concat_exprs(exprs1, exprs2);
+        assert_eq!(
+            exprs,
+            vec![
+                eq(var(0), sum(&[prod(&[input(0), cons(1)]), cons(1)])),
+                eq(var(1), sum(&[prod(&[var(0), cons(1)]), cons(1)])),
+                eq(var(1), input(1))
+            ]
+        );
+
+        assert_eq!(get_variables(&exprs, vec![1, 3]), vec![2, 3]);
     }
 
     #[test]
     fn test_gen_conv_input() {
-        let compiler = Compiler::new();
-        assert_eq!(
-            compiler.gen_conv_input(0, 2, 3),
-            vec![vec![0, 1], vec![3, 4]]
-        );
-        assert_eq!(
-            compiler.gen_conv_input(1, 2, 3),
-            vec![vec![1, 2], vec![4, 5]]
-        );
-        assert_eq!(
-            compiler.gen_conv_input(3, 2, 3),
-            vec![vec![3, 4], vec![6, 7]]
-        );
-        assert_eq!(
-            compiler.gen_conv_input(4, 2, 3),
-            vec![vec![4, 5], vec![7, 8]]
-        );
+        assert_eq!(gen_conv_input(0, 2, 3), vec![vec![0, 1], vec![3, 4]]);
+        assert_eq!(gen_conv_input(1, 2, 3), vec![vec![1, 2], vec![4, 5]]);
+        assert_eq!(gen_conv_input(3, 2, 3), vec![vec![3, 4], vec![6, 7]]);
+        assert_eq!(gen_conv_input(4, 2, 3), vec![vec![4, 5], vec![7, 8]]);
     }
 
     #[test]
@@ -715,8 +866,7 @@ mod tests {
             bias: vec![7],
         };
 
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
 
         assert_eq!(
             exprs,
@@ -739,8 +889,7 @@ mod tests {
             bias: vec![10],
         };
 
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
 
         assert_eq!(
             exprs,
@@ -801,8 +950,7 @@ mod tests {
             weight: vec![vec![vec![vec![1, 2], vec![3, 4]]]],
             bias: vec![10],
         };
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
 
         assert_eq!(
             exprs,
@@ -860,8 +1008,7 @@ mod tests {
             weight: vec![vec![vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]]]],
             bias: vec![10],
         };
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
 
         assert_eq!(
             exprs,
@@ -891,8 +1038,7 @@ mod tests {
             weight: vec![vec![vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]]]],
             bias: vec![10],
         };
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
 
         assert_eq!(
             exprs,
@@ -966,23 +1112,449 @@ mod tests {
     }
 
     #[test]
-    fn test_conv_multi_channel() {
-        // multi input
+    fn test_conv_multi_input_channel() {
         let conv = Conv {
-            input_size: 1,
+            input_size: 2,
             stride: 1,
-            weight: vec![vec![vec![vec![1]], vec![vec![2]]]],
-            bias: vec![3, 4],
+            weight: vec![vec![
+                vec![vec![3, 3], vec![3, 3]],
+                vec![vec![3, 3], vec![3, 3]],
+            ]],
+            bias: vec![5],
         };
-        let mut compiler = Compiler::new();
-        let exprs = compiler.conv_to_exprs(conv);
+        let exprs = conv_to_exprs(conv);
+
         assert_eq!(
             exprs,
             vec![
-                eq(var(0), sum(&[prod(&[input(0), cons(1)]), cons(3)])),
-                eq(var(0), input(1)),
-                eq(var(1), sum(&[prod(&[input(0), cons(2)]), cons(4)])),
-                eq(var(1), input(2)),
+                eq(
+                    var(0),
+                    sum(&[
+                        prod(&[input(0), cons(3)]),
+                        prod(&[input(1), cons(3)]),
+                        prod(&[input(2), cons(3)]),
+                        prod(&[input(3), cons(3)]),
+                        prod(&[input(4), cons(3)]),
+                        prod(&[input(5), cons(3)]),
+                        prod(&[input(6), cons(3)]),
+                        prod(&[input(7), cons(3)]),
+                        cons(5)
+                    ])
+                ),
+                eq(var(0), input(8)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_conv_multi_output_channel() {
+        let conv = Conv {
+            input_size: 3,
+            stride: 1,
+            weight: vec![
+                vec![vec![vec![3, 3], vec![3, 3]], vec![vec![3, 3], vec![3, 3]]],
+                vec![vec![vec![4, 4], vec![4, 4]], vec![vec![4, 4], vec![4, 4]]],
+            ],
+            bias: vec![5, 8],
+        };
+        let exprs = conv_to_exprs(conv);
+
+        assert_eq!(
+            exprs,
+            vec![
+                // output 0
+                eq(
+                    var(0),
+                    sum(&[
+                        prod(&[input(0), cons(3)]),
+                        prod(&[input(1), cons(3)]),
+                        prod(&[input(3), cons(3)]),
+                        prod(&[input(4), cons(3)]),
+                        prod(&[input(9), cons(3)]),
+                        prod(&[input(10), cons(3)]),
+                        prod(&[input(12), cons(3)]),
+                        prod(&[input(13), cons(3)]),
+                        cons(5)
+                    ])
+                ),
+                eq(
+                    var(1),
+                    sum(&[
+                        prod(&[input(1), cons(3)]),
+                        prod(&[input(2), cons(3)]),
+                        prod(&[input(4), cons(3)]),
+                        prod(&[input(5), cons(3)]),
+                        prod(&[input(10), cons(3)]),
+                        prod(&[input(11), cons(3)]),
+                        prod(&[input(13), cons(3)]),
+                        prod(&[input(14), cons(3)]),
+                        cons(5)
+                    ])
+                ),
+                eq(
+                    var(2),
+                    sum(&[
+                        prod(&[input(3), cons(3)]),
+                        prod(&[input(4), cons(3)]),
+                        prod(&[input(6), cons(3)]),
+                        prod(&[input(7), cons(3)]),
+                        prod(&[input(12), cons(3)]),
+                        prod(&[input(13), cons(3)]),
+                        prod(&[input(15), cons(3)]),
+                        prod(&[input(16), cons(3)]),
+                        cons(5)
+                    ])
+                ),
+                eq(
+                    var(3),
+                    sum(&[
+                        prod(&[input(4), cons(3)]),
+                        prod(&[input(5), cons(3)]),
+                        prod(&[input(7), cons(3)]),
+                        prod(&[input(8), cons(3)]),
+                        prod(&[input(13), cons(3)]),
+                        prod(&[input(14), cons(3)]),
+                        prod(&[input(16), cons(3)]),
+                        prod(&[input(17), cons(3)]),
+                        cons(5)
+                    ])
+                ),
+                // output 1
+                eq(
+                    var(4),
+                    sum(&[
+                        prod(&[input(0), cons(4)]),
+                        prod(&[input(1), cons(4)]),
+                        prod(&[input(3), cons(4)]),
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(9), cons(4)]),
+                        prod(&[input(10), cons(4)]),
+                        prod(&[input(12), cons(4)]),
+                        prod(&[input(13), cons(4)]),
+                        cons(8)
+                    ])
+                ),
+                eq(
+                    var(5),
+                    sum(&[
+                        prod(&[input(1), cons(4)]),
+                        prod(&[input(2), cons(4)]),
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(5), cons(4)]),
+                        prod(&[input(10), cons(4)]),
+                        prod(&[input(11), cons(4)]),
+                        prod(&[input(13), cons(4)]),
+                        prod(&[input(14), cons(4)]),
+                        cons(8)
+                    ])
+                ),
+                eq(
+                    var(6),
+                    sum(&[
+                        prod(&[input(3), cons(4)]),
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(6), cons(4)]),
+                        prod(&[input(7), cons(4)]),
+                        prod(&[input(12), cons(4)]),
+                        prod(&[input(13), cons(4)]),
+                        prod(&[input(15), cons(4)]),
+                        prod(&[input(16), cons(4)]),
+                        cons(8)
+                    ])
+                ),
+                eq(
+                    var(7),
+                    sum(&[
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(5), cons(4)]),
+                        prod(&[input(7), cons(4)]),
+                        prod(&[input(8), cons(4)]),
+                        prod(&[input(13), cons(4)]),
+                        prod(&[input(14), cons(4)]),
+                        prod(&[input(16), cons(4)]),
+                        prod(&[input(17), cons(4)]),
+                        cons(8)
+                    ])
+                ),
+                eq(var(0), input(18)),
+                eq(var(1), input(19)),
+                eq(var(2), input(20)),
+                eq(var(3), input(21)),
+                eq(var(4), input(22)),
+                eq(var(5), input(23)),
+                eq(var(6), input(24)),
+                eq(var(7), input(25)),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_layer() {
+        let exprs1 = vec![
+            eq(
+                var(0),
+                sum(&[
+                    prod(&[input(0), cons(1)]),
+                    prod(&[input(1), cons(2)]),
+                    prod(&[input(2), cons(3)]),
+                    prod(&[input(4), cons(4)]),
+                    prod(&[input(5), cons(5)]),
+                    prod(&[input(6), cons(6)]),
+                    prod(&[input(8), cons(7)]),
+                    prod(&[input(9), cons(8)]),
+                    prod(&[input(10), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(1),
+                sum(&[
+                    prod(&[input(1), cons(1)]),
+                    prod(&[input(2), cons(2)]),
+                    prod(&[input(3), cons(3)]),
+                    prod(&[input(5), cons(4)]),
+                    prod(&[input(6), cons(5)]),
+                    prod(&[input(7), cons(6)]),
+                    prod(&[input(9), cons(7)]),
+                    prod(&[input(10), cons(8)]),
+                    prod(&[input(11), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(2),
+                sum(&[
+                    prod(&[input(4), cons(1)]),
+                    prod(&[input(5), cons(2)]),
+                    prod(&[input(6), cons(3)]),
+                    prod(&[input(8), cons(4)]),
+                    prod(&[input(9), cons(5)]),
+                    prod(&[input(10), cons(6)]),
+                    prod(&[input(12), cons(7)]),
+                    prod(&[input(13), cons(8)]),
+                    prod(&[input(14), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(3),
+                sum(&[
+                    prod(&[input(5), cons(1)]),
+                    prod(&[input(6), cons(2)]),
+                    prod(&[input(7), cons(3)]),
+                    prod(&[input(9), cons(4)]),
+                    prod(&[input(10), cons(5)]),
+                    prod(&[input(11), cons(6)]),
+                    prod(&[input(13), cons(7)]),
+                    prod(&[input(14), cons(8)]),
+                    prod(&[input(15), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(var(0), input(16)),
+            eq(var(1), input(17)),
+            eq(var(2), input(18)),
+            eq(var(3), input(19)),
+        ];
+
+        let exprs2 = vec![
+            eq(
+                var(0),
+                sum(&[
+                    prod(&[input(0), cons(1)]),
+                    prod(&[input(1), cons(2)]),
+                    prod(&[input(2), cons(3)]),
+                    prod(&[input(4), cons(4)]),
+                    prod(&[input(5), cons(5)]),
+                    prod(&[input(6), cons(6)]),
+                    prod(&[input(8), cons(7)]),
+                    prod(&[input(9), cons(8)]),
+                    prod(&[input(10), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(1),
+                sum(&[
+                    prod(&[input(1), cons(1)]),
+                    prod(&[input(2), cons(2)]),
+                    prod(&[input(3), cons(3)]),
+                    prod(&[input(5), cons(4)]),
+                    prod(&[input(6), cons(5)]),
+                    prod(&[input(7), cons(6)]),
+                    prod(&[input(9), cons(7)]),
+                    prod(&[input(10), cons(8)]),
+                    prod(&[input(11), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(2),
+                sum(&[
+                    prod(&[input(4), cons(1)]),
+                    prod(&[input(5), cons(2)]),
+                    prod(&[input(6), cons(3)]),
+                    prod(&[input(8), cons(4)]),
+                    prod(&[input(9), cons(5)]),
+                    prod(&[input(10), cons(6)]),
+                    prod(&[input(12), cons(7)]),
+                    prod(&[input(13), cons(8)]),
+                    prod(&[input(14), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(
+                var(3),
+                sum(&[
+                    prod(&[input(5), cons(1)]),
+                    prod(&[input(6), cons(2)]),
+                    prod(&[input(7), cons(3)]),
+                    prod(&[input(9), cons(4)]),
+                    prod(&[input(10), cons(5)]),
+                    prod(&[input(11), cons(6)]),
+                    prod(&[input(13), cons(7)]),
+                    prod(&[input(14), cons(8)]),
+                    prod(&[input(15), cons(9)]),
+                    cons(10),
+                ]),
+            ),
+            eq(var(0), input(16)),
+            eq(var(1), input(17)),
+            eq(var(2), input(18)),
+            eq(var(3), input(19)),
+        ];
+
+        assert_eq!(
+            multiple_layer(exprs1, exprs2),
+            vec![
+                eq(
+                    var(0),
+                    sum(&[
+                        prod(&[input(0), cons(1)]),
+                        prod(&[input(1), cons(2)]),
+                        prod(&[input(2), cons(3)]),
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(5), cons(5)]),
+                        prod(&[input(6), cons(6)]),
+                        prod(&[input(8), cons(7)]),
+                        prod(&[input(9), cons(8)]),
+                        prod(&[input(10), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(1),
+                    sum(&[
+                        prod(&[input(1), cons(1)]),
+                        prod(&[input(2), cons(2)]),
+                        prod(&[input(3), cons(3)]),
+                        prod(&[input(5), cons(4)]),
+                        prod(&[input(6), cons(5)]),
+                        prod(&[input(7), cons(6)]),
+                        prod(&[input(9), cons(7)]),
+                        prod(&[input(10), cons(8)]),
+                        prod(&[input(11), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(2),
+                    sum(&[
+                        prod(&[input(4), cons(1)]),
+                        prod(&[input(5), cons(2)]),
+                        prod(&[input(6), cons(3)]),
+                        prod(&[input(8), cons(4)]),
+                        prod(&[input(9), cons(5)]),
+                        prod(&[input(10), cons(6)]),
+                        prod(&[input(12), cons(7)]),
+                        prod(&[input(13), cons(8)]),
+                        prod(&[input(14), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(3),
+                    sum(&[
+                        prod(&[input(5), cons(1)]),
+                        prod(&[input(6), cons(2)]),
+                        prod(&[input(7), cons(3)]),
+                        prod(&[input(9), cons(4)]),
+                        prod(&[input(10), cons(5)]),
+                        prod(&[input(11), cons(6)]),
+                        prod(&[input(13), cons(7)]),
+                        prod(&[input(14), cons(8)]),
+                        prod(&[input(15), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(4),
+                    sum(&[
+                        prod(&[input(0), cons(1)]),
+                        prod(&[input(1), cons(2)]),
+                        prod(&[input(2), cons(3)]),
+                        prod(&[input(4), cons(4)]),
+                        prod(&[input(5), cons(5)]),
+                        prod(&[input(6), cons(6)]),
+                        prod(&[input(8), cons(7)]),
+                        prod(&[input(9), cons(8)]),
+                        prod(&[input(10), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(5),
+                    sum(&[
+                        prod(&[input(1), cons(1)]),
+                        prod(&[input(2), cons(2)]),
+                        prod(&[input(3), cons(3)]),
+                        prod(&[input(5), cons(4)]),
+                        prod(&[input(6), cons(5)]),
+                        prod(&[input(7), cons(6)]),
+                        prod(&[input(9), cons(7)]),
+                        prod(&[input(10), cons(8)]),
+                        prod(&[input(11), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(6),
+                    sum(&[
+                        prod(&[input(4), cons(1)]),
+                        prod(&[input(5), cons(2)]),
+                        prod(&[input(6), cons(3)]),
+                        prod(&[input(8), cons(4)]),
+                        prod(&[input(9), cons(5)]),
+                        prod(&[input(10), cons(6)]),
+                        prod(&[input(12), cons(7)]),
+                        prod(&[input(13), cons(8)]),
+                        prod(&[input(14), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(
+                    var(7),
+                    sum(&[
+                        prod(&[input(5), cons(1)]),
+                        prod(&[input(6), cons(2)]),
+                        prod(&[input(7), cons(3)]),
+                        prod(&[input(9), cons(4)]),
+                        prod(&[input(10), cons(5)]),
+                        prod(&[input(11), cons(6)]),
+                        prod(&[input(13), cons(7)]),
+                        prod(&[input(14), cons(8)]),
+                        prod(&[input(15), cons(9)]),
+                        cons(10),
+                    ]),
+                ),
+                eq(var(8), prod(&[var(0), var(4)])),
+                eq(var(9), prod(&[var(1), var(5)])),
+                eq(var(10), prod(&[var(2), var(6)])),
+                eq(var(11), prod(&[var(3), var(7)])),
+                eq(var(8), input(16)),
+                eq(var(9), input(17)),
+                eq(var(10), input(18)),
+                eq(var(11), input(19)),
             ]
         );
     }

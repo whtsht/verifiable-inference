@@ -3,7 +3,7 @@ use libspartan::Instance;
 
 use crate::{
     circuit::{Circuit, CircuitValue},
-    scalar::from_i32,
+    scalar::from_i64,
 };
 
 pub struct R1CS {
@@ -26,7 +26,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Eq(y, x) => {
                 match x {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, from_i32(con).to_bytes()));
+                        a.push((i, num_vars, from_i64(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -41,7 +41,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Mult(y, x1, x2) => {
                 match x1 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, from_i32(con).to_bytes()));
+                        a.push((i, num_vars, from_i64(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -52,7 +52,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
                 }
                 match x2 {
                     CircuitValue::Constant(con) => {
-                        b.push((i, num_vars, from_i32(con).to_bytes()));
+                        b.push((i, num_vars, from_i64(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         b.push((i, var, one));
@@ -66,7 +66,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
             Circuit::Add(y, x1, x2) => {
                 match x1 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, from_i32(con).to_bytes()));
+                        a.push((i, num_vars, from_i64(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -77,7 +77,7 @@ pub fn into_r1cs(circuits: Vec<Circuit>, num_inputs: usize, num_vars: usize) -> 
                 }
                 match x2 {
                     CircuitValue::Constant(con) => {
-                        a.push((i, num_vars, from_i32(con).to_bytes()));
+                        a.push((i, num_vars, from_i64(con).to_bytes()));
                     }
                     CircuitValue::Variable(var) => {
                         a.push((i, var, one));
@@ -195,6 +195,177 @@ mod tests {
                 &InputsAssignment::new(&[
                     Scalar::from(5u32).to_bytes(),
                     Scalar::from(6u32).to_bytes()
+                ])
+                .unwrap()
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn test_r1cs_with_output() {
+        // v0 = 30 + i0
+        // v0 = i1
+        let circuits = vec![
+            Circuit::Add(0, CircuitValue::Constant(30), CircuitValue::Input(0)),
+            Circuit::Eq(0, CircuitValue::Input(1)),
+        ];
+        let (r1cs, _) = into_r1cs(circuits, 2, 1);
+        assert_eq!(r1cs.num_consts, 2);
+
+        // v0 = 30 + 20 = 50
+        assert_eq!(
+            r1cs.instance.is_sat(
+                &VarsAssignment::new(&[Scalar::from(50u32).to_bytes()]).unwrap(),
+                &InputsAssignment::new(&[
+                    Scalar::from(20u32).to_bytes(),
+                    Scalar::from(50u32).to_bytes()
+                ])
+                .unwrap()
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn test_multi_r1cs_with_output() {
+        // v0 = 30 * i0
+        // v1 = v0 + i1
+        // v0 = i2
+        // v1 = i3
+        let circuits = vec![
+            Circuit::Mult(0, CircuitValue::Constant(30), CircuitValue::Input(0)),
+            Circuit::Add(1, CircuitValue::Variable(0), CircuitValue::Input(1)),
+            Circuit::Eq(0, CircuitValue::Input(2)),
+            Circuit::Eq(1, CircuitValue::Input(3)),
+        ];
+
+        let (r1cs, _) = into_r1cs(circuits, 4, 2);
+        assert_eq!(r1cs.num_consts, 4);
+
+        // v0 = 30 * 5 = 150
+        // v1 = 150 + 6 = 156
+        assert_eq!(
+            r1cs.instance.is_sat(
+                &VarsAssignment::new(&[
+                    Scalar::from(150u32).to_bytes(),
+                    Scalar::from(156u32).to_bytes()
+                ])
+                .unwrap(),
+                &InputsAssignment::new(&[
+                    Scalar::from(5u32).to_bytes(),
+                    Scalar::from(6u32).to_bytes(),
+                    Scalar::from(150u32).to_bytes(),
+                    Scalar::from(156u32).to_bytes()
+                ])
+                .unwrap()
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn test_r1cs() {
+        // v0 = i0 + 1
+        // v1 = i1 + 1
+        // v2 = v0 * v1
+        // v2 = i2
+        let circuits = vec![
+            Circuit::Add(0, CircuitValue::Input(0), CircuitValue::Constant(1)),
+            Circuit::Add(1, CircuitValue::Input(1), CircuitValue::Constant(1)),
+            Circuit::Mult(2, CircuitValue::Variable(0), CircuitValue::Variable(1)),
+            Circuit::Eq(2, CircuitValue::Input(2)),
+        ];
+        let (r1cs, _) = into_r1cs(circuits, 3, 3);
+        assert_eq!(r1cs.num_consts, 4);
+
+        assert_eq!(
+            r1cs.instance.is_sat(
+                &VarsAssignment::new(&[
+                    Scalar::from(2u32).to_bytes(),
+                    Scalar::from(2u32).to_bytes(),
+                    Scalar::from(4u32).to_bytes(),
+                ])
+                .unwrap(),
+                &InputsAssignment::new(&[
+                    Scalar::from(1u32).to_bytes(),
+                    Scalar::from(1u32).to_bytes(),
+                    Scalar::from(4u32).to_bytes(),
+                ])
+                .unwrap()
+            ),
+            Ok(true)
+        );
+    }
+
+    //#[test]
+    //fn test_dense_layer_r1cs() {
+    //    let circuits = vec![
+    //        Circuit::Mult(1, CircuitValue::Input(0), CircuitValue::Constant(1)),
+    //        Circuit::Mult(2, CircuitValue::Input(1), CircuitValue::Constant(1)),
+    //        Circuit::Add(3, CircuitValue::Variable(1), CircuitValue::Variable(2)),
+    //        Circuit::Add(4, CircuitValue::Variable(3), CircuitValue::Constant(1)),
+    //        Circuit::Eq(0, CircuitValue::Variable(4)),
+    //        Circuit::Eq(0, CircuitValue::Input(2)),
+    //        Circuit::Mult(5, CircuitValue::Input(0), CircuitValue::Constant(1)),
+    //        Circuit::Mult(6, CircuitValue::Input(1), CircuitValue::Constant(1)),
+    //        Circuit::Add(7, CircuitValue::Variable(5), CircuitValue::Variable(6)),
+    //        Circuit::Add(8, CircuitValue::Variable(7), CircuitValue::Constant(1)),
+    //        Circuit::Eq(1, CircuitValue::Variable(8)),
+    //        Circuit::Eq(1, CircuitValue::Input(3)),
+    //    ];
+    //
+    //    let (r1cs, _) = into_r1cs(circuits, 4, 9);
+    //    assert_eq!(r1cs.num_consts, 12);
+    //
+    //    assert_eq!(
+    //        r1cs.instance.is_sat(
+    //            &VarsAssignment::new(
+    //                &[3u32, 1, 1, 2, 3, 1, 1, 2, 3]
+    //                    .into_iter()
+    //                    .map(|x| Scalar::from(x).to_bytes())
+    //                    .collect::<Vec<_>>()
+    //            )
+    //            .unwrap(),
+    //            &InputsAssignment::new(&[
+    //                Scalar::from(1u32).to_bytes(),
+    //                Scalar::from(1u32).to_bytes(),
+    //                Scalar::from(3u32).to_bytes(),
+    //                Scalar::from(3u32).to_bytes(),
+    //            ])
+    //            .unwrap()
+    //        ),
+    //        Ok(true)
+    //    );
+    //}
+
+    #[test]
+    fn test_dense_layer_r1cs() {
+        let circuits = vec![
+            Circuit::Mult(1, CircuitValue::Input(0), CircuitValue::Constant(1)),
+            Circuit::Mult(2, CircuitValue::Input(1), CircuitValue::Constant(1)),
+            Circuit::Add(3, CircuitValue::Variable(1), CircuitValue::Variable(2)),
+            Circuit::Add(4, CircuitValue::Variable(3), CircuitValue::Constant(1)),
+            Circuit::Eq(0, CircuitValue::Variable(4)),
+            Circuit::Eq(0, CircuitValue::Input(2)),
+        ];
+
+        let (r1cs, _) = into_r1cs(circuits, 3, 5);
+        assert_eq!(r1cs.num_consts, 6);
+
+        assert_eq!(
+            r1cs.instance.is_sat(
+                &VarsAssignment::new(
+                    &[3u32, 1, 1, 2, 3]
+                        .into_iter()
+                        .map(|x| Scalar::from(x).to_bytes())
+                        .collect::<Vec<_>>()
+                )
+                .unwrap(),
+                &InputsAssignment::new(&[
+                    Scalar::from(1u32).to_bytes(),
+                    Scalar::from(1u32).to_bytes(),
+                    Scalar::from(3u32).to_bytes(),
                 ])
                 .unwrap()
             ),

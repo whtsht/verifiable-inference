@@ -1,6 +1,9 @@
-use crate::compiler::Id;
+use core::panic;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::compiler::Id;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Circuit {
     // x = a
     Eq(Id, CircuitValue),
@@ -10,15 +13,15 @@ pub enum Circuit {
     Add(Id, CircuitValue, CircuitValue),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum CircuitValue {
     Variable(Id),
     Input(Id),
-    Constant(i32),
+    Constant(i64),
 }
 
-pub fn get_variables(circuits: &[Circuit], input: Vec<i32>) -> Vec<i32> {
-    let mut vars = vec![0i32; num_vars(circuits)];
+pub fn get_variables(circuits: &[Circuit], input: Vec<i64>) -> Vec<i64> {
+    let mut vars = vec![0i64; num_vars(circuits)];
 
     for circuit in circuits {
         match *circuit {
@@ -42,7 +45,38 @@ pub fn get_variables(circuits: &[Circuit], input: Vec<i32>) -> Vec<i32> {
     vars
 }
 
-fn evaluate_value(value: &CircuitValue, vars: &[i32], input: &[i32]) -> i32 {
+pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize) -> i64 {
+    for circuit in circuits {
+        match *circuit {
+            Circuit::Eq(id, value) if id == var_id => {
+                let computed_value = evaluate_value_(circuits, &value, input);
+                return computed_value;
+            }
+            Circuit::Add(id, val1, val2) if id == var_id => {
+                let computed_val1 = evaluate_value_(circuits, &val1, input);
+                let computed_val2 = evaluate_value_(circuits, &val2, input);
+                return computed_val1 + computed_val2;
+            }
+            Circuit::Mult(id, val1, val2) if id == var_id => {
+                let computed_val1 = evaluate_value_(circuits, &val1, input);
+                let computed_val2 = evaluate_value_(circuits, &val2, input);
+                return computed_val1 * computed_val2;
+            }
+            _ => {}
+        }
+    }
+    panic!("Variable not found");
+}
+
+fn evaluate_value_(circuits: &[Circuit], value: &CircuitValue, input: &[i64]) -> i64 {
+    match *value {
+        CircuitValue::Variable(id) => get_variable(circuits, input, id),
+        CircuitValue::Input(id) => input[id],
+        CircuitValue::Constant(val) => val,
+    }
+}
+
+fn evaluate_value(value: &CircuitValue, vars: &[i64], input: &[i64]) -> i64 {
     match *value {
         CircuitValue::Variable(id) => vars[id],
         CircuitValue::Input(id) => input[id],
@@ -153,7 +187,7 @@ mod tests {
         CircuitValue::Input(id)
     }
 
-    fn ccons(value: i32) -> CircuitValue {
+    fn ccons(value: i64) -> CircuitValue {
         CircuitValue::Constant(value)
     }
 
