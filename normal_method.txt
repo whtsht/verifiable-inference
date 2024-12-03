@@ -1,0 +1,151 @@
+Bench Conv: Normal Method/Input image size/10
+                        time:   [1.9204 µs 1.9237 µs 1.9279 µs]
+                        change: [-13.724% -13.576% -13.411%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low severe
+  4 (4.00%) low mild
+  2 (2.00%) high severe
+Bench Conv: Normal Method/Input image size/20
+                        time:   [9.9896 µs 9.9936 µs 9.9979 µs]
+                        change: [-24.353% -24.044% -23.724%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+Bench Conv: Normal Method/Input image size/30
+                        time:   [23.602 µs 23.606 µs 23.611 µs]
+                        change: [-27.793% -27.607% -27.407%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low severe
+  4 (4.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/40
+                        time:   [43.112 µs 43.145 µs 43.210 µs]
+                        change: [-30.107% -29.921% -29.716%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high severe
+Bench Conv: Normal Method/Input image size/50
+                        time:   [68.919 µs 68.936 µs 68.953 µs]
+                        change: [-30.164% -29.939% -29.654%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low severe
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+Bench Conv: Normal Method/Input image size/60
+                        time:   [99.659 µs 99.678 µs 99.697 µs]
+                        change: [-31.775% -31.677% -31.596%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+Bench Conv: Normal Method/Input image size/70
+                        time:   [137.13 µs 137.16 µs 137.19 µs]
+                        change: [-32.431% -32.124% -31.854%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+Bench Conv: Normal Method/Input image size/80
+                        time:   [180.52 µs 180.57 µs 180.63 µs]
+                        change: [-32.222% -32.050% -31.833%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) low severe
+  1 (1.00%) low mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/90
+                        time:   [229.44 µs 229.48 µs 229.53 µs]
+                        change: [-32.333% -32.188% -31.968%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high severe
+Bench Conv: Normal Method/Input image size/100
+                        time:   [285.63 µs 285.68 µs 285.72 µs]
+                        change: [-32.478% -32.277% -32.066%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 13 outliers among 100 measurements (13.00%)
+  9 (9.00%) low severe
+  2 (2.00%) low mild
+  2 (2.00%) high severe
+Bench Conv: Normal Method/Input image size/110
+                        time:   [345.39 µs 345.66 µs 345.91 µs]
+                        change: [-37.798% -37.513% -37.305%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 16 outliers among 100 measurements (16.00%)
+  14 (14.00%) high mild
+  2 (2.00%) high severe
+Bench Conv: Normal Method/Input image size/120
+                        time:   [411.33 µs 411.48 µs 411.65 µs]
+                        change: [-32.561% -32.423% -32.285%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  8 (8.00%) high severe
+Bench Conv: Normal Method/Input image size/130
+                        time:   [486.74 µs 486.84 µs 486.95 µs]
+                        change: [-33.097% -32.732% -32.447%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+Bench Conv: Normal Method/Input image size/140
+                        time:   [565.86 µs 566.05 µs 566.26 µs]
+                        change: [-33.285% -32.970% -32.687%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/150
+                        time:   [650.44 µs 650.72 µs 650.99 µs]
+                        change: [-33.137% -32.955% -32.725%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) low mild
+  2 (2.00%) high severe
+Bench Conv: Normal Method/Input image size/160
+                        time:   [742.02 µs 742.29 µs 742.57 µs]
+                        change: [-33.339% -33.129% -32.977%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low severe
+  3 (3.00%) low mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/170
+                        time:   [838.05 µs 838.31 µs 838.56 µs]
+                        change: [-34.116% -33.389% -32.901%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) low mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/180
+                        time:   [943.84 µs 944.08 µs 944.32 µs]
+                        change: [-33.251% -32.992% -32.798%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low severe
+  2 (2.00%) low mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/190
+                        time:   [1.0530 ms 1.0534 ms 1.0538 ms]
+                        change: [-33.109% -32.802% -32.329%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+Bench Conv: Normal Method/Input image size/200
+                        time:   [1.1686 ms 1.1689 ms 1.1693 ms]
+                        change: [-33.533% -33.246% -33.085%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 10 outliers among 100 measurements (10.00%)
+  4 (4.00%) low severe
+  5 (5.00%) low mild
+  1 (1.00%) high severe
+

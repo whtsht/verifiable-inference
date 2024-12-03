@@ -32,13 +32,18 @@ use merlin::Transcript;
 
 use crate::{
     circuit::{self, Circuit},
-    model::Model,
+    model::MnistModel,
     r1cs::{into_r1cs, R1CS},
     scalar::from_i64,
 };
 
-pub struct TrustedParty {
-    model: Model,
+pub trait Model {
+    fn compute(&self, input: &[i64]) -> Vec<i64>;
+    fn circuits(&self) -> Vec<Circuit>;
+}
+
+pub struct TrustedParty<M: Model + Clone> {
+    model: M,
     circuits: Vec<Circuit>,
     r1cs: Rc<R1CS>,
     gens: Rc<SNARKGens>,
@@ -46,13 +51,15 @@ pub struct TrustedParty {
     decommitment: Rc<ComputationDecommitment>,
 }
 
-impl TrustedParty {
-    pub fn setup(model: Model) -> Self {
-        //let circuits = model.circuits();
-        // for debug
-        let mut buffer = vec![];
-        let circuits: Vec<Circuit> =
-            crate::bin_loader::load_from_file("circuits.bin", &mut buffer).unwrap();
+pub fn save_circuits() {
+    use crate::bin_loader::save_to_file;
+    let model = MnistModel::load();
+    let circuits = model.circuits();
+    save_to_file(&circuits, "circuits/circuits.bin").unwrap();
+}
+
+impl<M: Model + Clone> TrustedParty<M> {
+    pub fn setup(model: M, circuits: Vec<Circuit>) -> Self {
         let num_cons = circuits.len();
         let num_vars = circuit::num_vars(&circuits);
         let num_inputs = circuit::num_inputs(&circuits);
@@ -71,7 +78,17 @@ impl TrustedParty {
         }
     }
 
-    pub fn assigment_worker(&self) -> Worker {
+    pub fn compute(&self, input: &[i64]) -> usize {
+        self.model
+            .compute(input)
+            .into_iter()
+            .enumerate()
+            .max_by(|a, b| a.1.cmp(&b.1))
+            .unwrap()
+            .0
+    }
+
+    pub fn assigment_worker(&self) -> Worker<M> {
         Worker {
             model: self.model.clone(),
             circuits: self.circuits.clone(),
@@ -90,8 +107,8 @@ impl TrustedParty {
     }
 }
 
-pub struct Worker {
-    model: Model,
+pub struct Worker<M: Model> {
+    model: M,
     circuits: Vec<Circuit>,
     r1cs: Rc<R1CS>,
     gens: Rc<SNARKGens>,
@@ -99,17 +116,17 @@ pub struct Worker {
     decomm: Rc<ComputationDecommitment>,
 }
 
-impl Worker {
-    pub fn run(&self, input: Vec<u8>) -> (Vec<i64>, SNARK) {
-        let output = self.model.compute(&input);
-        let inputs = [input.iter().map(|&x| x as i64).collect(), output.clone()].concat();
+impl<M: Model> Worker<M> {
+    pub fn run(&self, input: &[i64]) -> (Vec<i64>, SNARK) {
+        let output = self.model.compute(input);
+        let inputs = [input.to_vec(), output.clone()].concat();
         let vars = crate::circuit::get_variables(&self.circuits, inputs);
         let mut transcript = Transcript::new(b"SNARK");
         // R1CS input = Circuit.input + Circuit.output
         let inputs = Assignment::new(
             &input
-                .into_iter()
-                .map(|x| x as i64)
+                .iter()
+                .copied()
                 .chain(output.clone())
                 .map(|x| from_i64(x).to_bytes())
                 .collect::<Vec<_>>(),
@@ -137,18 +154,22 @@ impl Worker {
 }
 
 pub struct Client {
-    gens: Rc<SNARKGens>,
-    commitment: Rc<ComputationCommitment>,
+    pub gens: Rc<SNARKGens>,
+    pub commitment: Rc<ComputationCommitment>,
 }
 
 impl Client {
-    pub fn delegate_computation(&self, input: Vec<u8>, worker: &Worker) -> Option<Vec<i64>> {
-        let (output, proof) = worker.run(input.clone());
+    pub fn delegate_computation<M: Model>(
+        &self,
+        input: &[i64],
+        worker: &Worker<M>,
+    ) -> Option<Vec<i64>> {
+        let (output, proof) = worker.run(input);
         let mut transcript = Transcript::new(b"SNARK");
         let inputs = Assignment::new(
             &input
-                .into_iter()
-                .map(|x| x as i64)
+                .iter()
+                .copied()
                 .chain(output.clone())
                 .map(|x| from_i64(x).to_bytes())
                 .collect::<Vec<_>>(),
@@ -217,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_conv_layer() {
-        let model = Model {
+        let model = MnistModel {
             conv11: Conv {
                 stride: 1,
                 weight: vec![vec![vec![vec![1, 1], vec![1, 1]]]],

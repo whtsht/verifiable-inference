@@ -1,6 +1,7 @@
 use bincode::{deserialize, serialize};
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 
 pub fn save_to_file<T: serde::Serialize>(map: &T, filename: &str) -> std::io::Result<()> {
     let encoded: Vec<u8> = serialize(map).unwrap();
@@ -9,8 +10,8 @@ pub fn save_to_file<T: serde::Serialize>(map: &T, filename: &str) -> std::io::Re
     Ok(())
 }
 
-pub fn load_from_file<'a, T: serde::Deserialize<'a>>(
-    filename: &str,
+pub fn load_from_file<'a, T: serde::Deserialize<'a>, P: AsRef<Path>>(
+    filename: P,
     buffer: &'a mut Vec<u8>,
 ) -> std::io::Result<T> {
     let mut file = File::open(filename)?;

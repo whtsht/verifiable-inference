@@ -1,3 +1,5 @@
+use mnist::Mnist;
+
 use crate::{
     circuit::Circuit,
     compiler::{
@@ -5,6 +7,7 @@ use crate::{
         Expression,
     },
     jq::fetch_value,
+    protocol::Model,
 };
 
 pub trait Layer {
@@ -97,7 +100,7 @@ impl Layer for Conv {
 }
 
 #[derive(Debug, Clone)]
-pub struct Model {
+pub struct MnistModel {
     pub conv11: Conv,
     pub conv12: Conv,
     pub conv21: Conv,
@@ -156,7 +159,7 @@ pub fn fetch_dense_weight(filename: &str, layer: &str) -> Vec<Vec<i64>> {
         .collect()
 }
 
-impl Model {
+impl MnistModel {
     pub fn load() -> Self {
         let filename = "pi_net.json";
         let conv11 = Conv {
@@ -192,7 +195,7 @@ impl Model {
             weight: fetch_dense_weight(filename, "fc"),
         };
 
-        Model {
+        MnistModel {
             conv11,
             conv12,
             conv21,
@@ -202,21 +205,12 @@ impl Model {
     }
 }
 
-impl Model {
-    pub fn compute(&self, input: &[u8]) -> Vec<i64> {
-        let input: Vec<Vec<i64>> = input
-            .chunks(28)
-            .map(|row| row.iter().map(|&x| x as i64).collect())
-            .collect();
+impl Model for MnistModel {
+    fn compute(&self, input: &[i64]) -> Vec<i64> {
+        let input: Vec<Vec<i64>> = input.chunks(28).map(|row| row.to_vec()).collect();
 
         let conv11_out = self.conv11.forward(vec![input.clone()]);
         let conv12_out = self.conv12.forward(vec![input]);
-        //assert_eq!(conv11_out.len(), 6);
-        //assert_eq!(conv11_out[0].len(), 26);
-        //assert_eq!(conv11_out[0][0].len(), 26);
-        //assert_eq!(conv12_out.len(), 6);
-        //assert_eq!(conv12_out[0].len(), 26);
-        //assert_eq!(conv12_out[0][0].len(), 26);
         let conv1_img_len = conv11_out[0].len();
         let conv1_out_len = conv11_out.len();
         let mut conv1_out = vec![vec![vec![0; conv1_img_len]; conv1_img_len]; conv1_out_len];
@@ -230,12 +224,6 @@ impl Model {
 
         let conv21_out = self.conv21.forward(conv1_out.clone());
         let conv22_out = self.conv22.forward(conv1_out);
-        //assert_eq!(conv21_out.len(), 12);
-        //assert_eq!(conv21_out[0].len(), 12);
-        //assert_eq!(conv21_out[0][0].len(), 12);
-        //assert_eq!(conv22_out.len(), 12);
-        //assert_eq!(conv22_out[0].len(), 12);
-        //assert_eq!(conv22_out[0][0].len(), 12);
         let conv2_img_len = conv21_out[0].len();
         let conv2_out_len = conv21_out.len();
         let mut conv2_out = vec![vec![vec![0; conv2_img_len]; conv2_img_len]; conv2_out_len];
@@ -255,6 +243,21 @@ impl Model {
         self.fc.forward(fc_input)
     }
 
+    fn circuits(&self) -> Vec<Circuit> {
+        let exprs = self.exprs();
+        let mut variable_counter = find_max_var_id(&exprs) + 1;
+        let mut circuits = vec![];
+        for expr in exprs {
+            let (next_var, circuit) = flatten(expr, variable_counter);
+            circuits.extend(circuit);
+            variable_counter = next_var;
+        }
+
+        circuits
+    }
+}
+
+impl MnistModel {
     fn exprs(&self) -> Vec<Expression> {
         let model = self.clone();
         let conv11 = conv_to_exprs(model.conv11);
@@ -270,19 +273,32 @@ impl Model {
         exprs = concat_exprs(exprs, fc);
         exprs
     }
+}
 
-    pub fn circuits(&self) -> Vec<Circuit> {
-        let exprs = self.exprs();
-        let mut variable_counter = find_max_var_id(&exprs) + 1;
-        let mut circuits = vec![];
-        for expr in exprs {
-            let (next_var, circuit) = flatten(expr, variable_counter);
-            circuits.extend(circuit);
-            variable_counter = next_var;
+pub fn calculate_accuracy(model: &MnistModel, mnist: &Mnist) -> f64 {
+    let mut correct_predictions = 0;
+    let total_samples = mnist.tst_lbl.len();
+
+    for (idx, label) in mnist.tst_lbl.iter().enumerate() {
+        let input = &mnist.tst_img[784 * idx..784 * idx + (28 * 28)];
+        let input = input
+            .iter()
+            .map(|&x| if x > 0 { 1 } else { 0 })
+            .collect::<Vec<i64>>();
+
+        let (predicted_label, _) = model
+            .compute(&input)
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap();
+
+        if predicted_label as u8 == *label {
+            correct_predictions += 1;
         }
-
-        circuits
     }
+
+    correct_predictions as f64 / total_samples as f64 * 100.0
 }
 
 #[cfg(test)]
@@ -292,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_circuits() {
-        let model = Model {
+        let model = MnistModel {
             conv11: Conv {
                 stride: 1,
                 weight: vec![vec![vec![vec![1, 1], vec![1, 1]]]],

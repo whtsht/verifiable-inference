@@ -1,0 +1,27 @@
+Bench Mnist:
+  Normal Method       : 676.16 µs
+  Verification Method : 1.9770 ms
+
+Bench Conv:
+  Normal Method:
+    10: 1.9237 µs
+    20: 9.9936 µs
+    30: 23.606 µs
+    40: 43.145 µs
+    50: 68.936 µs
+    60: 99.678 µs
+    70: 137.16 µs
+    80: 180.57 µs
+    90: 229.48 µs
+   100: 285.68 µs
+  Verification Method:
+    10: 20.857 ms
+    20: 39.492 ms
+    30: 50.127 ms
+    40: 64.723 ms
+    50: 70.843 ms
+    60: 85.474 ms
+    70: 95.083 ms
+    80: 114.93 ms
+    90: 125.65 ms
+   100: 154.90 ms
