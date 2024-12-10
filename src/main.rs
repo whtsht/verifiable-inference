@@ -1,8 +1,8 @@
 use verifiable_inference::{
     circuit::Circuit,
-    compiler::{concat_exprs, find_max_var_id, flatten, linear_to_exprs},
-    model::{Dense, Layer},
-    protocol::Model,
+    compiler::{concat_exprs, conv_to_exprs, find_max_var_id, flatten, linear_to_exprs},
+    model::{Conv, Dense, Layer},
+    protocol::{Model, TrustedParty},
 };
 
 #[derive(Clone)]
@@ -39,23 +39,74 @@ impl Model for DenseModel {
     }
 }
 
+#[derive(Clone)]
+struct ConvModel {
+    layers: Vec<Conv>,
+    input_size: usize,
+}
+
+impl Model for ConvModel {
+    fn compute(&self, input: &[i64]) -> Vec<i64> {
+        let mut output: Vec<Vec<Vec<i64>>> = vec![input
+            .chunks(self.input_size)
+            .map(|row| row.to_vec())
+            .collect()];
+
+        for c in self.layers.iter() {
+            output = c.forward(output);
+        }
+        output.into_iter().flatten().flatten().collect()
+    }
+
+    fn circuits(&self) -> Vec<Circuit> {
+        let mut exprs = vec![];
+
+        for conv in self.layers.iter() {
+            let new_exprs = conv_to_exprs(conv.clone());
+            exprs = concat_exprs(exprs, new_exprs);
+        }
+
+        let mut variable_counter = find_max_var_id(&exprs) + 1;
+        let mut circuits = vec![];
+        for expr in exprs {
+            let (next_var, circuit) = flatten(expr, variable_counter);
+            circuits.extend(circuit);
+            variable_counter = next_var;
+        }
+
+        circuits
+    }
+}
+
 fn main() {
-    //let mut model = vec![];
-    //for i in 0..10 {
-    //    let conv = Conv {
-    //        stride: 1,
-    //        weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]; 1]; 1],
-    //        bias: vec![0],
-    //        input_size: 100 - (i * 2),
-    //    };
-    //    model.push(conv);
-    //}
-    //
-    //let input = vec![vec![vec![1; 100]; 100]];
-    //let output = compute_conv(input, &model);
-    //println!("{:?}", output.len());
-    //println!("{:?}", output[0].len());
-    //println!("{:?}", output[0][0].len());
+    let mut layers = vec![];
+    let size = 28;
+    for i in 0..10 {
+        let conv = Conv {
+            stride: 1,
+            weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]]],
+            bias: vec![0],
+            input_size: size - (i * 2),
+        };
+        layers.push(conv);
+    }
+
+    let model = ConvModel {
+        layers,
+        input_size: size,
+    };
+
+    let circuits = model.circuits();
+    println!("{}", circuits.len());
+    let trusted_party = TrustedParty::setup(model, circuits);
+
+    let worker = trusted_party.assigment_worker();
+    let client = trusted_party.create_client();
+    let input = vec![1; size * size];
+    println!(
+        "{:?}",
+        client.delegate_computation(&input, &worker).is_some()
+    );
 
     //let model = Model::load();
     //let mnist = MnistBuilder::new()

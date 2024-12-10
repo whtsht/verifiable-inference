@@ -52,6 +52,47 @@ fn get_max_id(exprs: &[Expression]) -> Id {
         .unwrap_or(0)
 }
 
+pub fn max_input_id(exprs: &Vec<Expression>) -> usize {
+    let mut max_id = 0;
+    for expr in exprs {
+        match expr {
+            Expression::Variable(_) => {}
+            Expression::Constant(_) => {}
+            Expression::Input(i) => {
+                max_id = max_id.max(*i);
+            }
+            Expression::Eq(e1, e2) => {
+                max_id = max_id.max(max_input_id_(e1));
+                max_id = max_id.max(max_input_id_(e2));
+            }
+            Expression::Sum(vec) | Expression::Product(vec) => {
+                max_id = max_id.max(max_input_id(vec));
+            }
+        }
+    }
+
+    max_id
+}
+
+fn max_input_id_(expr: &Expression) -> usize {
+    let mut max_id = 0;
+    match expr {
+        Expression::Variable(_) => {}
+        Expression::Constant(_) => {}
+        Expression::Input(i) => {
+            max_id = max_id.max(*i);
+        }
+        Expression::Eq(e1, e2) => {
+            max_id = max_id.max(max_input_id_(e1));
+            max_id = max_id.max(max_input_id_(e2));
+        }
+        Expression::Sum(vec) | Expression::Product(vec) => {
+            max_id = max_id.max(max_input_id(vec));
+        }
+    }
+    max_id
+}
+
 fn evaluate_expr(expr: Expression, input: &[i64], vars: &[i64]) -> i64 {
     match expr {
         Expression::Constant(val) => val,
@@ -417,6 +458,7 @@ pub fn concat_exprs(conv1: Vec<Expression>, mut conv2: Vec<Expression>) -> Vec<E
         }
     }
 
+    let exprs2 = remove_output(&conv2);
     let max_id = find_max_var_id(&conv1);
     let exprs1 = remove_output(&conv1);
     for (old_id, new_id) in (0..=max_id).zip(max_id + 1..) {
@@ -431,8 +473,9 @@ pub fn concat_exprs(conv1: Vec<Expression>, mut conv2: Vec<Expression>) -> Vec<E
     }
 
     // 入力サイズが異なる場合の調整
-    for (input2, input1) in inputs2.into_iter().zip(inputs1) {
-        conv2 = replace_input(&conv2, input2, input1);
+    let diff = max_input_id(&exprs1) - max_input_id(&exprs2);
+    for input2 in inputs2.into_iter() {
+        conv2 = replace_input(&conv2, input2, input2 + diff);
     }
 
     exprs1.into_iter().chain(conv2).collect()

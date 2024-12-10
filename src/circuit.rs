@@ -21,45 +21,26 @@ pub enum CircuitValue {
 }
 
 pub fn get_variables(circuits: &[Circuit], input: Vec<i64>) -> Vec<i64> {
-    let mut vars = vec![0i64; num_vars(circuits)];
-
-    for circuit in circuits {
-        match *circuit {
-            Circuit::Eq(id, value) => {
-                let computed_value = evaluate_value(&value, &vars, &input);
-                vars[id] = computed_value;
-            }
-            Circuit::Add(id, val1, val2) => {
-                let computed_val1 = evaluate_value(&val1, &vars, &input);
-                let computed_val2 = evaluate_value(&val2, &vars, &input);
-                vars[id] = computed_val1 + computed_val2;
-            }
-            Circuit::Mult(id, val1, val2) => {
-                let computed_val1 = evaluate_value(&val1, &vars, &input);
-                let computed_val2 = evaluate_value(&val2, &vars, &input);
-                vars[id] = computed_val1 * computed_val2;
-            }
-        }
-    }
-
-    vars
+    (0..num_vars(circuits))
+        .map(|id| get_variable(circuits, &input, id))
+        .collect()
 }
 
 pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize) -> i64 {
     for circuit in circuits {
         match *circuit {
             Circuit::Eq(id, value) if id == var_id => {
-                let computed_value = evaluate_value_(circuits, &value, input);
+                let computed_value = evaluate_value(circuits, &value, input);
                 return computed_value;
             }
             Circuit::Add(id, val1, val2) if id == var_id => {
-                let computed_val1 = evaluate_value_(circuits, &val1, input);
-                let computed_val2 = evaluate_value_(circuits, &val2, input);
+                let computed_val1 = evaluate_value(circuits, &val1, input);
+                let computed_val2 = evaluate_value(circuits, &val2, input);
                 return computed_val1 + computed_val2;
             }
             Circuit::Mult(id, val1, val2) if id == var_id => {
-                let computed_val1 = evaluate_value_(circuits, &val1, input);
-                let computed_val2 = evaluate_value_(circuits, &val2, input);
+                let computed_val1 = evaluate_value(circuits, &val1, input);
+                let computed_val2 = evaluate_value(circuits, &val2, input);
                 return computed_val1 * computed_val2;
             }
             _ => {}
@@ -68,7 +49,7 @@ pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize) -> i64 {
     panic!("Variable not found");
 }
 
-fn evaluate_value_(circuits: &[Circuit], value: &CircuitValue, input: &[i64]) -> i64 {
+fn evaluate_value(circuits: &[Circuit], value: &CircuitValue, input: &[i64]) -> i64 {
     match *value {
         CircuitValue::Variable(id) => get_variable(circuits, input, id),
         CircuitValue::Input(id) => input[id],
@@ -76,15 +57,7 @@ fn evaluate_value_(circuits: &[Circuit], value: &CircuitValue, input: &[i64]) ->
     }
 }
 
-fn evaluate_value(value: &CircuitValue, vars: &[i64], input: &[i64]) -> i64 {
-    match *value {
-        CircuitValue::Variable(id) => vars[id],
-        CircuitValue::Input(id) => input[id],
-        CircuitValue::Constant(val) => val,
-    }
-}
-
-pub fn num_vars(circuits: &[Circuit]) -> usize {
+/* pub fn num_vars(circuits: &[Circuit]) -> usize {
     circuits
         .iter()
         .flat_map(|c| match c {
@@ -98,6 +71,83 @@ pub fn num_vars(circuits: &[Circuit]) -> usize {
         .max()
         .map(|max_id| max_id + 1)
         .unwrap_or(0)
+} */
+
+pub fn max_var_id(circuits: &[Circuit]) -> usize {
+    let mut max_id = 0;
+
+    for circuit in circuits {
+        match circuit {
+            Circuit::Eq(id, value) => {
+                max_id = max_id.max(*id);
+                if let CircuitValue::Variable(var_id) = value {
+                    max_id = max_id.max(*var_id);
+                }
+            }
+            Circuit::Add(id, value1, value2) | Circuit::Mult(id, value1, value2) => {
+                max_id = max_id.max(*id);
+                if let CircuitValue::Variable(var_id) = value1 {
+                    max_id = max_id.max(*var_id);
+                }
+                if let CircuitValue::Variable(var_id) = value2 {
+                    max_id = max_id.max(*var_id);
+                }
+            }
+        }
+    }
+
+    max_id
+}
+
+pub fn max_input_id(circuits: &[Circuit]) -> usize {
+    let mut max_id = 0;
+
+    for circuit in circuits {
+        match circuit {
+            Circuit::Eq(_, value) => {
+                if let CircuitValue::Input(var_id) = value {
+                    max_id = max_id.max(*var_id);
+                }
+            }
+            Circuit::Add(_, value1, value2) | Circuit::Mult(_, value1, value2) => {
+                if let CircuitValue::Input(var_id) = value1 {
+                    max_id = max_id.max(*var_id);
+                }
+                if let CircuitValue::Input(var_id) = value2 {
+                    max_id = max_id.max(*var_id);
+                }
+            }
+        }
+    }
+
+    max_id
+}
+
+use std::collections::HashSet;
+pub fn num_vars(circuits: &[Circuit]) -> usize {
+    let mut variables = HashSet::new();
+
+    for circuit in circuits {
+        match circuit {
+            Circuit::Eq(id, value) => {
+                variables.insert(*id);
+                if let CircuitValue::Variable(var_id) = value {
+                    variables.insert(*var_id);
+                }
+            }
+            Circuit::Add(id, value1, value2) | Circuit::Mult(id, value1, value2) => {
+                variables.insert(*id);
+                if let CircuitValue::Variable(var_id) = value1 {
+                    variables.insert(*var_id);
+                }
+                if let CircuitValue::Variable(var_id) = value2 {
+                    variables.insert(*var_id);
+                }
+            }
+        }
+    }
+
+    variables.len()
 }
 
 pub fn num_inputs(circuits: &[Circuit]) -> usize {

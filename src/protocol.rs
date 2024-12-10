@@ -213,9 +213,7 @@ mod tests {
         }
 
         let num_vars = circuit::num_vars(&circuits);
-        let variable = (0..num_vars)
-            .map(|x| circuit::get_variable(&circuits, &input, x))
-            .collect::<Vec<_>>();
+        let variable = circuit::get_variables(&circuits, input.clone());
         let num_inputs = circuit::num_inputs(&circuits);
 
         let (r1cs, _) = into_r1cs(circuits.clone(), num_inputs, num_vars);
