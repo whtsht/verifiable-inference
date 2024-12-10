@@ -1,5 +1,3 @@
-use core::panic;
-
 use crate::compiler::Id;
 use serde::{Deserialize, Serialize};
 
@@ -20,27 +18,37 @@ pub enum CircuitValue {
     Constant(i64),
 }
 
+use std::collections::HashMap;
 pub fn get_variables(circuits: &[Circuit], input: Vec<i64>) -> Vec<i64> {
-    (0..num_vars(circuits))
-        .map(|id| get_variable(circuits, &input, id))
-        .collect()
+    let mut cache: HashMap<usize, i64> = HashMap::new();
+    let mut vars = vec![];
+    for id in 0..num_vars(circuits) {
+        let value = get_variable(circuits, &input, id, &cache);
+        vars.push(value);
+        cache.insert(id, value);
+    }
+    vars
 }
 
-pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize) -> i64 {
+pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize, cache: &HashMap<usize, i64>) -> i64 {
+    if let Some(&value) = cache.get(&var_id) {
+        return value;
+    }
+
     for circuit in circuits {
         match *circuit {
             Circuit::Eq(id, value) if id == var_id => {
-                let computed_value = evaluate_value(circuits, &value, input);
+                let computed_value = evaluate_value(circuits, &value, input, cache);
                 return computed_value;
             }
             Circuit::Add(id, val1, val2) if id == var_id => {
-                let computed_val1 = evaluate_value(circuits, &val1, input);
-                let computed_val2 = evaluate_value(circuits, &val2, input);
+                let computed_val1 = evaluate_value(circuits, &val1, input, cache);
+                let computed_val2 = evaluate_value(circuits, &val2, input, cache);
                 return computed_val1 + computed_val2;
             }
             Circuit::Mult(id, val1, val2) if id == var_id => {
-                let computed_val1 = evaluate_value(circuits, &val1, input);
-                let computed_val2 = evaluate_value(circuits, &val2, input);
+                let computed_val1 = evaluate_value(circuits, &val1, input, cache);
+                let computed_val2 = evaluate_value(circuits, &val2, input, cache);
                 return computed_val1 * computed_val2;
             }
             _ => {}
@@ -49,9 +57,9 @@ pub fn get_variable(circuits: &[Circuit], input: &[i64], var_id: usize) -> i64 {
     panic!("Variable not found");
 }
 
-fn evaluate_value(circuits: &[Circuit], value: &CircuitValue, input: &[i64]) -> i64 {
+fn evaluate_value(circuits: &[Circuit], value: &CircuitValue, input: &[i64], cache: &HashMap<usize, i64>) -> i64 {
     match *value {
-        CircuitValue::Variable(id) => get_variable(circuits, input, id),
+        CircuitValue::Variable(id) => get_variable(circuits, input, id, cache),
         CircuitValue::Input(id) => input[id],
         CircuitValue::Constant(val) => val,
     }

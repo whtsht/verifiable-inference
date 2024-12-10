@@ -80,8 +80,8 @@ impl Model for ConvModel {
 
 fn main() {
     let mut layers = vec![];
-    let size = 28;
-    for i in 0..10 {
+    let size = 400;
+    for i in 0..150 {
         let conv = Conv {
             stride: 1,
             weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]]],
@@ -99,6 +99,7 @@ fn main() {
     let circuits = model.circuits();
     println!("{}", circuits.len());
     let trusted_party = TrustedParty::setup(model, circuits);
+    println!("trusted_party");
 
     let worker = trusted_party.assigment_worker();
     let client = trusted_party.create_client();

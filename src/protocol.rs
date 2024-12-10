@@ -119,8 +119,10 @@ pub struct Worker<M: Model> {
 impl<M: Model> Worker<M> {
     pub fn run(&self, input: &[i64]) -> (Vec<i64>, SNARK) {
         let output = self.model.compute(input);
+        println!("compute");
         let inputs = [input.to_vec(), output.clone()].concat();
         let vars = crate::circuit::get_variables(&self.circuits, inputs);
+        println!("get variable");
         let mut transcript = Transcript::new(b"SNARK");
         // R1CS input = Circuit.input + Circuit.output
         let inputs = Assignment::new(
@@ -149,6 +151,7 @@ impl<M: Model> Worker<M> {
             &self.gens,
             &mut transcript,
         );
+        println!("proof");
         (output, proof)
     }
 }
@@ -276,9 +279,7 @@ mod tests {
 
         let circuits = model.circuits();
         let num_vars = circuit::num_vars(&circuits);
-        let variable = (0..num_vars)
-            .map(|x| circuit::get_variable(&circuits, &input, x))
-            .collect::<Vec<_>>();
+        let variable = circuit::get_variables(&circuits, input.clone());
 
         let num_inputs = circuit::num_inputs(&circuits);
         assert_eq!(num_inputs, 16 + 4);

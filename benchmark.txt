@@ -28,3 +28,88 @@ Bench Conv:
     90: 125.65 ms
    100: 154.90 ms
    7.426763倍
+
+Bench Conv: Normal Method/Number of Layers/1
+                        36.625 µs
+Bench Conv: Normal Method/Number of Layers/2
+                        69.556 µs
+Bench Conv: Normal Method/Number of Layers/3
+                        99.844 µs
+Bench Conv: Normal Method/Number of Layers/4
+                        128.27 µs
+Bench Conv: Normal Method/Number of Layers/5
+                        154.04 µs
+Bench Conv: Normal Method/Number of Layers/6
+                        174.57 µs
+Bench Conv: Normal Method/Number of Layers/7
+                        195.29 µs
+Bench Conv: Normal Method/Number of Layers/8
+                        212.25 µs
+Bench Conv: Normal Method/Number of Layers/9
+                        228.06 µs
+Bench Conv: Normal Method/Number of Layers/10
+                        242.74 µs
+Bench Conv: Normal Method/Number of Layers/11
+                        257.45 µs
+Bench Conv: Normal Method/Number of Layers/12
+                        266.87 µs
+Bench Conv: Normal Method/Number of Layers/13
+                        275.82 µs
+Bench Conv: Normal Method/Number of Layers/14
+                        286.45 µs
+Bench Conv: Normal Method/Number of Layers/15
+                        290.25 µs
+Bench Conv: Normal Method/Number of Layers/16
+                        295.94 µs
+Bench Conv: Normal Method/Number of Layers/17
+                        299.42 µs
+Bench Conv: Normal Method/Number of Layers/18
+                        302.62 µs
+Bench Conv: Normal Method/Number of Layers/19
+                        307.57 µs
+Bench Conv: Normal Method/Number of Layers/20
+                        307.32 µs
+8.527778倍
+
+
+Bench Conv: Verifiable Method/Number of Layers/1
+                        65.945 ms
+Bench Conv: Verifiable Method/Number of Layers/2
+                        71.406 ms
+Bench Conv: Verifiable Method/Number of Layers/3
+                        84.486 ms
+Bench Conv: Verifiable Method/Number of Layers/4
+                        91.818 ms
+Bench Conv: Verifiable Method/Number of Layers/5
+                        109.06 ms
+Bench Conv: Verifiable Method/Number of Layers/6
+                        108.97 ms
+Bench Conv: Verifiable Method/Number of Layers/7
+                        109.58 ms
+Bench Conv: Verifiable Method/Number of Layers/8
+                        108.68 ms
+Bench Conv: Verifiable Method/Number of Layers/9
+                        116.75 ms
+Bench Conv: Verifiable Method/Number of Layers/10
+                        116.59 ms
+Bench Conv: Verifiable Method/Number of Layers/11
+                        116.71 ms
+Bench Conv: Verifiable Method/Number of Layers/12
+                        116.11 ms
+Bench Conv: Verifiable Method/Number of Layers/13
+                        116.13 ms
+Bench Conv: Verifiable Method/Number of Layers/14
+                        116.44 ms
+Bench Conv: Verifiable Method/Number of Layers/15
+                        115.62 ms
+Bench Conv: Verifiable Method/Number of Layers/16
+                        142.70 ms
+Bench Conv: Verifiable Method/Number of Layers/17
+                        142.32 ms
+Bench Conv: Verifiable Method/Number of Layers/18
+                        142.96 ms
+Bench Conv: Verifiable Method/Number of Layers/19
+                        142.67 ms
+Bench Conv: Verifiable Method/Number of Layers/20
+                        143.34 ms
+2.2倍

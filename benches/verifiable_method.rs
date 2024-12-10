@@ -184,10 +184,11 @@ fn bench_dense(c: &mut Criterion) {
 fn bench_conv(c: &mut Criterion) {
     let mut group = c.benchmark_group("Bench Conv: Verifiable Method");
 
-    for size in (1..=20).map(|x| x * 10) {
+    let size = 50;
+    for num_layer in 21..=30 {
         let mut layers = vec![];
 
-        for i in 0..2 {
+        for i in 0..num_layer {
             let conv = Conv {
                 stride: 1,
                 weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]]],
@@ -221,7 +222,7 @@ fn bench_conv(c: &mut Criterion) {
         .unwrap();
 
         group.bench_with_input(
-            BenchmarkId::new("Input image size", size),
+            BenchmarkId::new("Number of Layers", num_layer),
             &size,
             |b, &_| {
                 b.iter(|| {
