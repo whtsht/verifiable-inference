@@ -184,16 +184,16 @@ fn bench_dense(c: &mut Criterion) {
 fn bench_conv(c: &mut Criterion) {
     let mut group = c.benchmark_group("Bench Conv: Verifiable Method");
 
-    let size = 50;
+    let size = 10;
     for num_layer in 1..=20 {
         let mut layers = vec![];
 
-        for i in 0..num_layer {
+        for _ in 0..num_layer {
             let conv = Conv {
                 stride: 1,
-                weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]]],
+                weight: vec![vec![vec![vec![0]]]],
                 bias: vec![0],
-                input_size: size - (i * 2),
+                input_size: size,
             };
             layers.push(conv);
         }
@@ -203,39 +203,37 @@ fn bench_conv(c: &mut Criterion) {
             input_size: size,
         };
         let circuits = model.circuits();
-        println!("Layer {num_layer}: {}", circuits.len());
 
-        //let trusted_party = TrustedParty::setup(model, circuits);
-        //
-        //let worker = trusted_party.assigment_worker();
-        //let client = trusted_party.create_client();
-        //
-        //let input = vec![1; size * size];
-        //let (output, proof) = worker.run(&input);
-        //let inputs = Assignment::new(
-        //    &input
-        //        .iter()
-        //        .copied()
-        //        .chain(output.clone())
-        //        .map(|x| from_i64(x).to_bytes())
-        //        .collect::<Vec<_>>(),
-        //)
-        //.unwrap();
+        let trusted_party = TrustedParty::setup(model, circuits);
+
+        let worker = trusted_party.assigment_worker();
+        let client = trusted_party.create_client();
+
+        let input = vec![1; size * size];
+        let (output, proof) = worker.run(&input);
+        let inputs = Assignment::new(
+            &input
+                .iter()
+                .copied()
+                .chain(output.clone())
+                .map(|x| from_i64(x).to_bytes())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("Number of Layers", num_layer),
             &size,
             |b, &_| {
                 b.iter(|| {
-                    // dummy
-                    //proof
-                    //    .verify(
-                    //        black_box(&client.commitment),
-                    //        black_box(&inputs),
-                    //        black_box(&mut Transcript::new(b"SNARK")),
-                    //        black_box(&client.gens),
-                    //    )
-                    //    .unwrap();
+                    proof
+                        .verify(
+                            black_box(&client.commitment),
+                            black_box(&inputs),
+                            black_box(&mut Transcript::new(b"SNARK")),
+                            black_box(&client.gens),
+                        )
+                        .unwrap();
                 })
             },
         );

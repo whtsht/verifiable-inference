@@ -109,6 +109,7 @@ fn main() {
         client.delegate_computation(&input, &worker).is_some()
     );
 
+
     //let model = Model::load();
     //let mnist = MnistBuilder::new()
     //    .label_format_digit()

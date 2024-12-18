@@ -62,19 +62,19 @@ fn compute_conv(input: Vec<Vec<Vec<i64>>>, model: &[Conv]) -> Vec<Vec<Vec<i64>>>
 #[allow(dead_code)]
 fn bench_conv(c: &mut Criterion) {
     let mut group = c.benchmark_group("Bench Conv: Normal Method");
-    let size = 50;
+    let size = 10;
     for num_layer in 1..=20 {
         group.bench_with_input(
             BenchmarkId::new("Number of Layers", num_layer),
             &size,
             |b, &size| {
                 let mut model = vec![];
-                for i in 0..num_layer {
+                for _ in 0..num_layer {
                     let conv = Conv {
                         stride: 1,
-                        weight: vec![vec![vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]; 1]; 1],
+                        weight: vec![vec![vec![vec![0]]]],
                         bias: vec![0],
-                        input_size: size - (i * 2),
+                        input_size: size,
                     };
                     model.push(conv);
                 }
