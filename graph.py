@@ -1,8 +1,15 @@
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
-plt.rcParams['font.family'] = 'Noto Sans CJK JP'
-plt.rcParams["font.size"] = 10
-plt.rcParams['font.weight'] = 'bold'
+font_path = './NotoSansJP-Regular.ttf'
+font_manager.fontManager.addfont(font_path)
+font_prop = font_manager.FontProperties(fname=font_path)
+plt.rcParams['font.family'] = font_prop.get_name()
+plt.rcParams['font.size'] = 13
+
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.markersize'] = 2
+plt.rcParams['lines.markeredgewidth'] = 2
 
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
@@ -10,7 +17,6 @@ plt.rcParams["xtick.minor.visible"] = True
 plt.rcParams["ytick.minor.visible"] = True
 plt.rcParams['xtick.top'] = True
 plt.rcParams['ytick.right'] = True
-
 
 figsize = (4,4)
 
@@ -22,16 +28,18 @@ times_n = [1.9237, 9.9936, 23.606, 43.145, 68.936, 99.678, 137.16, 180.57, 229.4
 times_v = [20.857, 39.492, 50.127, 64.723, 70.843, 85.474, 95.083, 114.93, 125.65, 154.90]
 
 plt.figure(figsize=figsize)
-plt.plot(image_sizes, times_n, marker='o', color='blue')
-plt.xlabel("画像サイズ [px]")
+plt.plot(image_sizes, times_n, marker='o', color='blue', markersize=6)
+plt.xlabel("画像サイズ [px]", weight='bold')
 plt.ylabel("実行時間 [µs]")
+plt.tight_layout()
 plt.savefig('n__image_size.png', dpi=200, format='png')
 plt.close()
 
 plt.figure(figsize=figsize)
-plt.plot(image_sizes, times_v, marker='s', color='red')
+plt.plot(image_sizes, times_v, marker='s', color='red', markersize=6)
 plt.xlabel("画像サイズ [px]")
 plt.ylabel("実行時間 [ms]")
+plt.tight_layout()
 plt.savefig('v__image_size.png', dpi=200, format='png')
 plt.close()
 
@@ -49,15 +57,17 @@ times_v = [
 ]
 
 plt.figure(figsize=figsize)
-plt.plot(layers, times_n, marker='o', color='blue')
+plt.plot(layers, times_n, marker='o', color='blue', markersize=6)
 plt.xlabel("畳み込み層の数")
 plt.ylabel("実行時間 [µs]")
+plt.tight_layout()
 plt.savefig('n__layer_size.png', dpi=200, format='png')
 plt.close()
 
 plt.figure(figsize=figsize)
-plt.plot(layers, times_v, marker='o', color='red')
+plt.plot(layers, times_v, marker='s', color='red', markersize=6)
 plt.xlabel("畳み込み層の数")
 plt.ylabel("実行時間 [ms]")
+plt.tight_layout()
 plt.savefig('v__layer_size.png', dpi=200, format='png')
 plt.close()
